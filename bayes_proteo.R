@@ -13,17 +13,21 @@ post_mean_diff = function(
   ## nu_0: A number, corresponding to the prior degrees of freedom
   ## return: A vector providing the empirical posterior distribution of the 
   ##   mean's difference between the desired groups.
-  
-  ## Loop over the groups 
+
+  ## Loop over the groups
   floop_k = function(k){
+    
     ## Extract the adequate group
     data_k = data %>% filter(Group == k)
     ## Collect all the different groups
-    list_Draw = data_k$Draw %>% unique()
+    list_draw = data_k$Draw %>% unique()
+    n_draw = data_k$Draw %>% n_distinct()
     
-    sapply(list_Draw, floop_d, k = k) %>% 
-      group_by(Group) %>% 
-      summarise_all(Mean_emp_dist = mean())
+    list_mat = lapply(list_draw, floop_d, k = k) 
+
+    ((1/n_draw) * Reduce('+', list_mat)) %>% 
+      as_tibble() %>% 
+      mutate(Group = k, .before = 1) %>% 
     return()
   }
   
@@ -31,31 +35,89 @@ post_mean_diff = function(
   floop_d = function(d, k){
     ## Extract the adequate draws
     data_k_d = data %>%
-      filter(Group == k,  Draw = d) %>% 
-      Select(- Group)
+      filter(Group == k,  Draw == d)
     
-    ## Compute the sum_1^N{y_n}
-    sum_yn = data_k_d %>% 
-      group_by(Draw) %>% 
-      summarise(Output = sum(Output)) 
+    N_k = data_k_d$Sample %>% n_distinct()
+    list_sample = data_k_d$Sample %>% unique()
+    
+    ## Compute the mean 1/N sum_1^N{y_n}
+    mean_yn_k = data_k_d %>% 
+      group_by(ID) %>% 
+      summarise(Output = mean(Output)) %>% 
+      pull(Output)
+    
+    ##Compute the mean 1/N sum_1^N{(y_n - \bar{y_n}^)2}
+    cov_yn = 0
+    for(n in list_sample)
+    {
+      yn_k = data_k_d %>%
+        filter(Sample == n) %>%
+        pull(Output)
+      
+      cov_yn = cov_yn + (yn_k - mean_yn_k) %*% t(yn_k - mean_yn_k)
+    }
     
     ## Compute the updated posterior hyper-parameters
-    mu_N = NA
-    lambda_N = NA
-    Sigma_N = NA
-    nu_N = NA
+    mu_N = (lambda_0 * mu_0 + N_k * mean_yn_k) / (lambda_0 + N_k) 
+    lambda_N = lambda_0 + N_k
+    Sigma_N = Sigma_0 + cov_yn + 
+      (lambda_0 * N_k) / lambda_N * (mean_yn_k - mu_0) %*% t(mean_yn_k - mu_0)
+    nu_N = nu_0 + N_k
     ## Draw from the adequate T-distribution
-    emp_dist = rt(..., size = 10^6)
-    
-    emp_dist %>% 
-      as_tibble() %>% 
-      mutate(Draw = k)%>% 
+    rmvt(n = 10000, sigma = Sigma_N / (nu_N * lambda_N),
+                    df = nu_N, delta = mu_N) %>% 
       return()
   }
   
   ## Collect all the different groups
   list_group = data$Group %>% unique()
   
-  sapply(list_group, floop_k) %>% 
+  lapply(list_group, floop_k) %>% 
+    bind_rows() %>% 
     return()
 }
+
+list_ID = data.lg$ID %>% unique()
+
+data = data.lg %>%
+  arrange(Imp.Draw,Sample, ID) %>% 
+  mutate(Output = Intensity, Draw = Imp.Draw) %>% 
+  select(- c(Intensity, Imp.Draw)) %>%
+  filter(ID %in% list_ID[1:100])
+
+dim = data$ID %>% n_distinct()
+
+res = post_mean_diff(
+  data = data,
+  mu_0 = rep(0, dim), 
+  lambda_0 = 1,
+  Sigma_0 = diag(1, nrow = dim, ncol = dim),
+  nu_0 = 1
+)
+
+plot_dif = function(emp_dist, groups, peptide){
+  if(length(groups) == 2){
+    db1 = emp_dist %>% filter(Group == groups[[1]]) %>% select(- Group)
+    db2 = emp_dist %>% filter(Group == groups[[2]]) %>% select(- Group)
+    db = tibble(Dif = (db1 - db2)[, peptide])
+    bar = 0
+  } else if(length(groups) == 1){
+    db1 = emp_dist %>% filter(Group == groups[[1]]) %>% select(- Group)
+    db = tibble(Dif = db1 %>% pull(peptide))
+    bar = mean(db$Dif)
+  }
+  ggplot(db) +
+    geom_density(aes(x = Dif), fill = "#00B2EE") %>% return() +
+    geom_vline(xintercept = bar, color = 'red') +
+    theme_classic()
+}
+
+gg1 = plot_dif(res, c('Point1', 'Point2'), 42)
+
+gg2 = plot_dif(res, c('Point1'), 42)
+gg3 = plot_dif(res, c('Point2'), 42)
+
+library(gridExtra)
+grid.arrange(gg2, gg3, nrow = 2)
+
+
