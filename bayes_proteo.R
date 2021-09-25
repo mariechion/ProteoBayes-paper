@@ -1,3 +1,8 @@
+# Load required packages
+library(tidyverse)
+library(mvtnorm)
+library(ggplot2)
+
 post_mean_diff = function(
   data,
   mu_0, 
@@ -77,24 +82,6 @@ post_mean_diff = function(
     return()
 }
 
-list_ID = data.lg$ID %>% unique()
-
-data = data.lg %>%
-  arrange(Imp.Draw,Sample, ID) %>% 
-  mutate(Output = Intensity, Draw = Imp.Draw) %>% 
-  select(- c(Intensity, Imp.Draw)) %>%
-  filter(ID %in% list_ID[1:100])
-
-dim = data$ID %>% n_distinct()
-
-res = post_mean_diff(
-  data = data,
-  mu_0 = rep(0, dim), 
-  lambda_0 = 1,
-  Sigma_0 = diag(1, nrow = dim, ncol = dim),
-  nu_0 = 1
-)
-
 plot_dif = function(emp_dist, groups, peptide){
   if(length(groups) == 2){
     db1 = emp_dist %>% filter(Group == groups[[1]]) %>% select(- Group)
@@ -112,12 +99,6 @@ plot_dif = function(emp_dist, groups, peptide){
     theme_classic()
 }
 
-gg1 = plot_dif(res, c('Point1', 'Point2'), 42)
 
-gg2 = plot_dif(res, c('Point1'), 42)
-gg3 = plot_dif(res, c('Point2'), 42)
-
-library(gridExtra)
-grid.arrange(gg2, gg3, nrow = 2)
 
 
