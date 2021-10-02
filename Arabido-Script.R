@@ -1,5 +1,6 @@
 # Load functions and packages
 source("bayes_proteo.R")
+library(gridExtra)
 
 
 # Load ARATH+UPS quantification data (MaxQuant export)
@@ -103,13 +104,13 @@ list_ID = data.lg$ID %>% unique()
 data = data.lg %>%
   arrange(Imp.Draw,Sample, ID) %>% 
   mutate(Output = Intensity, Draw = Imp.Draw) %>% 
-  select(- c(Intensity, Imp.Draw)) %>%
-  filter(ID %in% list_ID[c(13731)])
+  select(- c(Intensity, Imp.Draw))
 
-dim = data$ID %>% n_distinct()
+dataa = data %>% filter(ID %in% list_ID[c(13731)])
+dim = dataa$ID %>% n_distinct()
 
 res = post_mean_diff(
-  data = data,
+  data = dataa ,
   mu_0 = rep(0, dim), 
   lambda_0 = 1,
   Sigma_0 = diag(1, nrow = dim, ncol = dim),
@@ -124,16 +125,9 @@ gg2 = plot_dif(res, c('Point3', 'Point7'), peptide = 1) + xlim(c(-30,30))
 gg2 = plot_dif(res, c('Point1'), 42)
 gg3 = plot_dif(res, c('Point2'), 42)
 
-library(gridExtra)
 grid.arrange(gg1, gg4, gg5, gg2, nrow = 4)
 
-
-
-datab = data.lg %>%
-  arrange(Imp.Draw,Sample, ID) %>% 
-  mutate(Output = Intensity, Draw = Imp.Draw) %>% 
-  select(- c(Intensity, Imp.Draw)) %>%
-  filter(ID %in% list_ID[1:100])
+datab = data %>% filter(ID %in% list_ID[1:1000])
 
 dimb = datab$ID %>% n_distinct()
 
@@ -142,7 +136,7 @@ resb = post_mean_diff(
   mu_0 = rep(0, dimb), 
   lambda_0 = 1,
   Sigma_0 = diag(1, nrow = dimb, ncol = dimb),
-  nu_0 = 1
+  nu_0 = 10
 )
 
 gg1b = plot_dif(resb, c('Point7', 'Point1'), peptide = 42) + xlim(c(-30,30))
@@ -154,13 +148,15 @@ grid.arrange(gg1b, gg4b, gg5b, gg2b, nrow = 4)
 
 
 
-datac = data.lg %>%
-  arrange(Imp.Draw,Sample, ID) %>% 
-  mutate(Output = Intensity, Draw = Imp.Draw) %>% 
-  select(- c(Intensity, Imp.Draw)) %>%
-  filter(ID %in% list_ID)
+# datac = data %>%
+#   arrange(Imp.Draw,Sample, ID) %>% 
+#   mutate(Output = Intensity, Draw = Imp.Draw) %>% 
+#   select(- c(Intensity, Imp.Draw))
 
 dimc = datac$ID %>% n_distinct()
+
+sub_datac = datac %>%
+  filter(ID %in% list_ID[1:100])
 
 resc = post_mean_diff(
   data = datac,
@@ -169,3 +165,19 @@ resc = post_mean_diff(
   Sigma_0 = diag(1, nrow = dimc, ncol = dimc),
   nu_0 = 1
 )
+
+## Univariate case ##
+db = data %>% filter(Draw == 1) %>% select(- Draw)
+
+sub_db = db %>%
+  filter(ID %in% list_ID[1])
+
+res_uni = post_mean_diff_uni(
+  data = sub_db,
+  mu_0 = 0, 
+  lambda_0 = 1,
+  beta_0 = 1,
+  alpha_0 = 50
+)
+
+## Rajouter dans la fonction la boucle sur la totalité des peptides

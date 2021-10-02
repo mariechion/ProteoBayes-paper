@@ -2,6 +2,7 @@
 library(tidyverse)
 library(mvtnorm)
 library(ggplot2)
+library(Matrix)
 
 post_mean_diff = function(
   data,
@@ -18,7 +19,7 @@ post_mean_diff = function(
   ## nu_0: A number, corresponding to the prior degrees of freedom
   ## return: A vector providing the empirical posterior distribution of the 
   ##   mean's difference between the desired groups.
-
+  t1 = Sys.time()
   ## Loop over the groups
   floop_k = function(k){
     
@@ -38,6 +39,8 @@ post_mean_diff = function(
   
   ## Loop over the draws
   floop_d = function(d, k){
+    t2 = Sys.time()
+    paste0('Group n°',k , ' - Draw n° ', d, ' - ', t2 - t1) %>% print()
     ## Extract the adequate draws
     data_k_d = data %>%
       filter(Group == k,  Draw == d)
@@ -59,17 +62,20 @@ post_mean_diff = function(
         filter(Sample == n) %>%
         pull(Output)
       
-      cov_yn = cov_yn + (yn_k - mean_yn_k) %*% t(yn_k - mean_yn_k)
+      centred_y = (yn_k - mean_yn_k) 
+      
+      cov_yn = cov_yn + tcrossprod(centred_y)
     }
     
+    centred_mean = mean_yn_k - mu_0
     ## Compute the updated posterior hyper-parameters
     mu_N = (lambda_0 * mu_0 + N_k * mean_yn_k) / (lambda_0 + N_k) 
     lambda_N = lambda_0 + N_k
     Sigma_N = Sigma_0 + cov_yn + 
-      (lambda_0 * N_k) / lambda_N * (mean_yn_k - mu_0) %*% t(mean_yn_k - mu_0)
+      (lambda_0 * N_k) / lambda_N * tcrossprod(centred_mean)
     nu_N = nu_0 + N_k
     ## Draw from the adequate T-distribution
-    rmvt(n = 10000, sigma = Sigma_N / (nu_N * lambda_N),
+    rmvt(n = 10, sigma = Sigma_N / (nu_N * lambda_N),
                     df = nu_N, delta = mu_N) %>% 
       return()
   }
@@ -81,6 +87,75 @@ post_mean_diff = function(
     bind_rows() %>% 
     return()
 }
+
+post_mean_diff_uni = function(
+  data,
+  mu_0, 
+  lambda_0,
+  beta_0,
+  alpha_0
+){
+  ## data: A tibble or data frame containing imputed data setsfor all groups.
+  ##  Required columns: ID, Output, Group, Draw
+  ## mu_0: A vector, corresponding to the prior mean 
+  ## lamba_0: A number, corresponding to the prior covariance scaling parameter
+  ## beta_0: A matrix, corresponding to the prior covariance parameter
+  ## alpha_0: A number, corresponding to the prior degrees of freedom
+  ## return: A vector providing the empirical posterior distribution of the 
+  ##   mean's difference between the desired groups.
+  t1 = Sys.time()
+  ## Loop over the groups
+  floop_k = function(k){
+    t2 = Sys.time()
+    paste0('Group n°',k , ' Time : ', t2 - t1) %>% print()
+    
+    ## Extract the adequate group
+    data_k = data %>% filter(Group == k)
+    ## Extract the number of samples
+    N_k = data_k$Sample %>% n_distinct()
+    ## Extract the list of samples
+    list_sample = data_k$Sample %>% unique()
+    
+    ## Compute the mean 1/N sum_1^N{y_n}
+    mean_yn_k = data_k %>% 
+      group_by(ID) %>% 
+      summarise(Output = mean(Output)) %>% 
+      pull(Output)
+    
+    ##Compute the mean 1/N sum_1^N{(y_n - \bar{y_n}^)2}
+    cov_yn = 0
+    for(n in list_sample)
+    {
+      yn_k = data_k %>%
+        filter(Sample == n) %>%
+        pull(Output)
+      
+      cov_yn = cov_yn + (yn_k - mean_yn_k)^2
+    }
+    
+    centred_mean = 
+    ## Compute the updated posterior hyper-parameters
+    mu_N = (lambda_0 * mu_0 + N_k * mean_yn_k) / (lambda_0 + N_k) 
+    lambda_N = lambda_0 + N_k
+    beta_N = beta_0 + cov_yn + 
+      (lambda_0 * N_k) / lambda_N * (mean_yn_k - mu_0)^2
+    alpha_N = alpha_0 + N_k / 2
+    ## Draw from the adequate T-distribution
+    tibble(
+      'Group' = k,
+      'Mean' = mu_N + sqrt(beta_N) * rt(n = 10000, df = alpha_N)
+      )%>%
+      return()
+  }
+  
+  ## Collect all the different groups
+  list_group = data$Group %>% unique()
+  
+  lapply(list_group, floop_k) %>% 
+    bind_rows() %>% 
+    return()
+}
+
 
 plot_dif = function(emp_dist, groups, peptide){
   if(length(groups) == 2){
@@ -98,7 +173,3 @@ plot_dif = function(emp_dist, groups, peptide){
     geom_vline(xintercept = bar, color = 'red') +
     theme_classic()
 }
-
-
-
-
