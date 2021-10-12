@@ -69,17 +69,18 @@ plot.qData <- function(qData.lg, pept = NULL, cond = NULL, ...){
   if (is.null(cond)) {cond = levels(as.factor(qData.lg$Group))}
   df.plot = qData.lg %>% filter(ID %in% pept & Group %in% cond)
   print(df.plot)
-  ggplot(df.plot, aes(x = Group, y= Intensity, color = Imp.Draw)) + 
-    geom_boxplot() +
+  ggplot2::ggplot(df.plot, aes(x = Group, y= Intensity, fill = Imp.Draw)) + 
+    geom_boxplot(outlier.shape = NA) +
     theme_classic() +
-    labs(color = "Imputation\nindex")
+    labs(fill = "Imputation\nindex")
 }
 
 df.plot <- data.lg %>% filter(ID %in% "AALEELVK" & Group %in% c("Point1","Point7"))
 plot.qData(data.lg, pept = "AALEELVK", cond = c("Point1","Point7"))
 plot.qData(data.lg, pept = "AALEELVK") # UPS
 plot.qData(data.lg, pept = "AAAVGANNQAAQSILK") # ARATH
-plot.qData(data.lg, pept = "LAAEAYSIFR") # ARATH
+plot.qData(data.lg, pept = "AAAVGANNQAAQSILK", cond = c("Point1","Point7")) # ARATH
+plot.qData(data.lg, pept = "LAAEAYSIFR", cond = c("Point1","Point7")) # ARATH
 
 
 load(file="DATA/Arabido_UPS/Arabido_UPS_1of3inall_ImpMLE_res_dapar")
@@ -94,6 +95,101 @@ df.pval %>% arrange(pval.rawp) %>% filter(Seq %in% c("AALEELVK","LAAEAYSIFR"))
 
 which(list.ID$ID %in% c("AALEELVK","LAAEAYSIFR"))
 
+<<<<<<< Updated upstream
+=======
+data.plot = data.lg %>% filter(ID %in%  c("AALEELVK","LAAEAYSIFR"))
+data.plot
+
+data = data.plot %>%
+  arrange(Imp.Draw,Sample, ID) %>% 
+  mutate(Output = Intensity, Draw = Imp.Draw) %>% 
+  select(- c(Intensity, Imp.Draw))
+
+dim = data$ID %>% n_distinct()
+
+res = post_mean_diff(
+  data = data,
+  mu_0 = rep(0, 2), 
+  lambda_0 = 1,
+  Sigma_0 = diag(1, nrow = 2, ncol = 2),
+  nu_0 = 1
+)
+
+gg1 = plot_dif(res, c('Point7', 'Point1'), peptide = 1) + xlim(c(-30,30))
+plot_dif(res, c('Point7', 'Point1'), peptide = 2) + xlim(c(-30,30))
+
+
+data.lg %>% filter(Protein == "P12081ups|SYHC_HUMAN_UPS") %>% select(ID) %>% unique()
+data.lg %>% filter(Protein == "P12081ups|SYHC_HUMAN_UPS") %>% select(ID) %>% n_distinct()
+data.lg %>% filter(Protein == "sp|Q94A41|AMY3_ARATH") %>% select(ID) %>% unique()
+data.lg %>% filter(Protein == "sp|Q94A41|AMY3_ARATH") %>% select(ID) %>% n_distinct()
+
+data.lg %>% group_by(Protein) %>% summarise(n = n_distinct(ID)) %>% filter(n==9)
+
+data.lg %>% filter(Protein == "P12081ups|SYHC_HUMAN_UPS") %>% select(ID) %>% unique()
+data.lg %>% filter(Protein == "sp|F4I893|ILA_ARATH") %>% select(ID) %>% unique()
+
+
+# P12081ups|SYHC_HUMAN_UPS
+plot.qData(data.lg, 
+           pept = "AALEELVK",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "ASAELIEEEVAK",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "DQGGELLSLR",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "IFSIVEQR",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "KVPCVGLSIGVER",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "REDLVEEIK",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "RHGAEVIDTPVFELK",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "TICSSVDK",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "VPCVGLSIGVER",
+           cond = c("Point1","Point7"))
+
+# sp|F4I893|ILA_ARATH
+plot.qData(data.lg, 
+           pept = "ALADPNTDVR",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "EVQELAQEAAER",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "LVLPSLLK",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "QSSVELLGDLLFK",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "SPIVSAAAFENLVK",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "TDVSLSVR",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "VLPLIIPILSK",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "VVIDVLSSIVSALHDDSSEVR",
+           cond = c("Point1","Point7"))
+plot.qData(data.lg, 
+           pept = "YALELLPVILPQAR",
+           cond = c("Point1","Point7"))
+
+
+>>>>>>> Stashed changes
 # De A-tu
 
 list_ID = data.lg$ID %>% unique()
@@ -116,7 +212,14 @@ res = post_mean_diff(
   nu_0 = 1
 )
 
+<<<<<<< Updated upstream
 pept = dataa$ID[1]
+=======
+gg1 = plot_dif(res, c('Point7', 'Point1'), peptide = 75) + xlim(c(-30,30))
+gg4 = plot_dif(res, c('Point1', 'Point7'), peptide = 1) + xlim(c(-30,30))
+gg5 = plot_dif(res, c('Point7', 'Point3'), peptide = 1) + xlim(c(-30,30))
+gg2 = plot_dif(res, c('Point3', 'Point7'), peptide = 1) + xlim(c(-30,30))
+>>>>>>> Stashed changes
 
 plot_dif(res, c('Point1'), peptide = pept)
 plot_dif(res, c('Point7'), peptide = pept)
