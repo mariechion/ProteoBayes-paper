@@ -94,9 +94,6 @@ df.pval %>% arrange(pval.rawp) %>% filter(Seq %in% c("AALEELVK","LAAEAYSIFR"))
 
 which(list.ID$ID %in% c("AALEELVK","LAAEAYSIFR"))
 
-
-
-
 # De A-tu
 
 list_ID = data.lg$ID %>% unique()
@@ -109,25 +106,29 @@ data = data.lg %>%
 dataa = data %>% filter(ID %in% list_ID[c(13731)])
 dim = dataa$ID %>% n_distinct()
 
+nu_0 = rgamma(1,2, 0.1)
+
 res = post_mean_diff(
-  data = dataa ,
-  mu_0 = rep(0, dim), 
+  data = dataa,
+  mu_0 = rep(20, dim), 
   lambda_0 = 1,
   Sigma_0 = diag(1, nrow = dim, ncol = dim),
   nu_0 = 1
 )
 
-gg1 = plot_dif(res, c('Point7', 'Point1'), peptide = 1) + xlim(c(-30,30))
-gg4 = plot_dif(res, c('Point1', 'Point7'), peptide = 1) + xlim(c(-30,30))
-gg5 = plot_dif(res, c('Point7', 'Point3'), peptide = 1) + xlim(c(-30,30))
-gg2 = plot_dif(res, c('Point3', 'Point7'), peptide = 1) + xlim(c(-30,30))
+pept = dataa$ID[1]
 
-gg2 = plot_dif(res, c('Point1'), 42)
-gg3 = plot_dif(res, c('Point2'), 42)
+plot_dif(res, c('Point1'), peptide = pept)
+plot_dif(res, c('Point7'), peptide = pept)
+
+gg1 = plot_dif(res, c('Point7', 'Point1'), peptide = pept) + xlim(c(-10,10))
+gg4 = plot_dif(res, c('Point1', 'Point7'), peptide = pept) + xlim(c(-10,10))
+gg5 = plot_dif(res, c('Point4', 'Point3'), peptide = pept) + xlim(c(-10,10))
+gg2 = plot_dif(res, c('Point3', 'Point4'), peptide = pept) + xlim(c(-10,10))
 
 grid.arrange(gg1, gg4, gg5, gg2, nrow = 4)
 
-datab = data %>% filter(ID %in% list_ID[1:1000])
+datab = data %>% filter(ID %in% list_ID[1:10])
 
 dimb = datab$ID %>% n_distinct()
 
@@ -136,13 +137,15 @@ resb = post_mean_diff(
   mu_0 = rep(0, dimb), 
   lambda_0 = 1,
   Sigma_0 = diag(1, nrow = dimb, ncol = dimb),
-  nu_0 = 10
+  nu_0 = 20
 )
 
-gg1b = plot_dif(resb, c('Point7', 'Point1'), peptide = 42) + xlim(c(-30,30))
-gg4b = plot_dif(resb, c('Point1', 'Point7'), peptide = 42) + xlim(c(-30,30))
-gg5b = plot_dif(resb, c('Point7', 'Point3'), peptide = 42) + xlim(c(-30,30))
-gg2b = plot_dif(resb, c('Point3', 'Point7'), peptide = 42) + xlim(c(-30,30))
+pept = datab$ID[7]
+
+gg1b = plot_dif(resb, c('Point7', 'Point1'), peptide = pept) + xlim(c(-10,10))
+gg4b = plot_dif(resb, c('Point1', 'Point7'), peptide = pept) + xlim(c(-10,10))
+gg5b = plot_dif(resb, c('Point7', 'Point3'), peptide = pept) + xlim(c(-10,10))
+gg2b = plot_dif(resb, c('Point3', 'Point7'), peptide = pept) + xlim(c(-10,10))
 
 grid.arrange(gg1b, gg4b, gg5b, gg2b, nrow = 4)
 
@@ -170,14 +173,14 @@ resc = post_mean_diff(
 db = data %>% filter(Draw == 1) %>% select(- Draw)
 
 sub_db = db %>%
-  filter(ID %in% list_ID[1])
+  filter(ID %in% list_ID[1:100])
 
 res_uni = post_mean_diff_uni(
   data = sub_db,
-  mu_0 = 0, 
+  mu_0 = 20, 
   lambda_0 = 1,
-  beta_0 = 1,
-  alpha_0 = 50
+  beta_0 = 0,
+  alpha_0 = 10
 )
 
-## Rajouter dans la fonction la boucle sur la totalité des peptides
+plot()

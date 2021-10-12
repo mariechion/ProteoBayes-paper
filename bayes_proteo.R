@@ -32,8 +32,11 @@ post_mean_diff = function(
     list_mat = lapply(list_draw, floop_d, k = k) 
 
     ((1/n_draw) * Reduce('+', list_mat)) %>% 
-      as_tibble() %>% 
-      mutate(Group = k, .before = 1) %>% 
+      `colnames<-`(data$ID %>% unique()) %>%
+      as_tibble() %>%
+      pivot_longer(everything(), names_to = 'ID', values_to = 'Mean') %>%
+      arrange(ID) %>% 
+      mutate(Group = k) %>% 
     return()
   }
   
@@ -75,7 +78,7 @@ post_mean_diff = function(
       (lambda_0 * N_k) / lambda_N * tcrossprod(centred_mean)
     nu_N = nu_0 + N_k
     ## Draw from the adequate T-distribution
-    rmvt(n = 10, sigma = Sigma_N / (nu_N * lambda_N),
+    rmvt(n = 1000, sigma = Sigma_N / (nu_N * lambda_N),
                     df = nu_N, delta = mu_N) %>% 
       return()
   }
@@ -95,7 +98,7 @@ post_mean_diff_uni = function(
   beta_0,
   alpha_0
 ){
-  ## data: A tibble or data frame containing imputed data setsfor all groups.
+  ## data: A tibble or data frame containing imputed data sets for all groups.
   ##  Required columns: ID, Output, Group, Draw
   ## mu_0: A vector, corresponding to the prior mean 
   ## lamba_0: A number, corresponding to the prior covariance scaling parameter
@@ -104,13 +107,27 @@ post_mean_diff_uni = function(
   ## return: A vector providing the empirical posterior distribution of the 
   ##   mean's difference between the desired groups.
   t1 = Sys.time()
-  ## Loop over the groups
-  floop_k = function(k){
+  ## Loop over the ID
+  floop_i = function(i){
     t2 = Sys.time()
-    paste0('Group n°',k , ' Time : ', t2 - t1) %>% print()
+    paste0('ID: ', i, ' - Time : ', t2 - t1) %>% print()
     
+    ## Collect all the different groups
+    list_group = data$Group %>% unique()
+    
+    lapply(list_group, floop_k, i = i) %>% 
+      bind_rows() %>% 
+      mutate(ID = i, .before = 'Mean') %>% 
+      return()
+  }
+  
+  ## Loop over the groups
+  floop_k = function(k, i){
     ## Extract the adequate group
-    data_k = data %>% filter(Group == k)
+    data_k = data %>%
+      filter(ID == i) %>% 
+      filter(Group == k)
+      
     ## Extract the number of samples
     N_k = data_k$Sample %>% n_distinct()
     ## Extract the list of samples
@@ -141,6 +158,7 @@ post_mean_diff_uni = function(
       (lambda_0 * N_k) / lambda_N * (mean_yn_k - mu_0)^2
     alpha_N = alpha_0 + N_k / 2
     ## Draw from the adequate T-distribution
+
     tibble(
       'Group' = k,
       'Mean' = mu_N + sqrt(beta_N) * rt(n = 10000, df = alpha_N)
@@ -149,23 +167,32 @@ post_mean_diff_uni = function(
   }
   
   ## Collect all the different groups
-  list_group = data$Group %>% unique()
+  list_ID = data$ID %>% unique()
   
-  lapply(list_group, floop_k) %>% 
+  lapply(list_ID, floop_i) %>% 
     bind_rows() %>% 
     return()
 }
 
-
 plot_dif = function(emp_dist, groups, peptide){
   if(length(groups) == 2){
-    db1 = emp_dist %>% filter(Group == groups[[1]]) %>% select(- Group)
-    db2 = emp_dist %>% filter(Group == groups[[2]]) %>% select(- Group)
-    db = tibble(Dif = (db1 - db2)[, peptide])
+    db1 = emp_dist %>%
+      filter(ID == peptide) %>%
+      filter(Group == groups[[1]]) %>% 
+      pull(Mean)
+    db2 = emp_dist %>%
+      filter(ID == peptide) %>% 
+      filter(Group == groups[[2]]) %>% 
+      pull(Mean)
+  
+    db = tibble(Dif = db2 - db1)
     bar = 0
   } else if(length(groups) == 1){
-    db1 = emp_dist %>% filter(Group == groups[[1]]) %>% select(- Group)
-    db = tibble(Dif = db1 %>% pull(peptide))
+    db = emp_dist %>%
+      filter(ID == peptide) %>%
+      filter(Group == groups[[1]]) %>% 
+      select(Mean) %>% 
+      transmute(Dif = Mean)
     bar = mean(db$Dif)
   }
   ggplot(db) +
