@@ -3,6 +3,7 @@ library(tidyverse)
 library(mvtnorm)
 library(ggplot2)
 library(Matrix)
+library(latex2exp)
 
 post_mean_diff = function(
   data,
@@ -28,7 +29,7 @@ post_mean_diff = function(
     ## Collect all the different groups
     list_draw = data_k$Draw %>% unique()
     n_draw = data_k$Draw %>% n_distinct()
-    
+
     list_mat = lapply(list_draw, floop_d, k = k) 
 
     ((1/n_draw) * Reduce('+', list_mat)) %>% 
@@ -78,7 +79,7 @@ post_mean_diff = function(
       (lambda_0 * N_k) / lambda_N * tcrossprod(centred_mean)
     nu_N = nu_0 + N_k
     ## Draw from the adequate T-distribution
-    rmvt(n = 1000, sigma = Sigma_N / (nu_N * lambda_N),
+    rmvt(n = 10000, sigma = Sigma_N / (nu_N * lambda_N),
                     df = nu_N, delta = mu_N) %>% 
       return()
   }
@@ -205,11 +206,10 @@ plot_dif = function(emp_dist, groups, peptide){
   ggplot(db_plot, aes(x = x, y = y)) +
     geom_ribbon(aes(ymin=0, ymax=y, fill = quant)) +
     geom_vline(xintercept = bar, color = 'red') +
-    scale_y_continuous(breaks = NULL, labels = NULL) +
     ylab('Density') +
     xlab('Difference of means') +
     geom_vline(aes(xintercept = 0)) +
     scale_fill_manual(values=c("#F8B9C5", "#AFC0E3", "#F8B9C5")) + 
-    theme_classic() +
+    theme_classic() + 
     theme(legend.position="none")
 }
