@@ -79,12 +79,20 @@ list.ID %>% slice(intersect(grep("ARATH", list.ID$Protein),which(startsWith(list
 plot.qData <- function(qData.lg, pept = NULL, cond = NULL, ...){
   if (is.null(pept)) {pept = levels(as.factor(qData.lg$ID))}
   if (is.null(cond)) {cond = levels(as.factor(qData.lg$Group))}
+  if (is.null(qData.lg$Intensity)) {qData.lg$Intensity = qData.lg$Output}
   df.plot = qData.lg %>% filter(ID %in% pept & Group %in% cond)
   print(df.plot)
-  ggplot2::ggplot(df.plot, aes(x = Group, y= Intensity, fill = Imp.Draw)) + 
-    geom_boxplot(outlier.shape = NA) +
-    theme_classic() +
-    labs(fill = "Imputation\nindex")
+  if (!is.null(qData.lg$Imp.Draw)) {
+    ggplot2::ggplot(df.plot, aes(x = Group, y= Intensity, fill = Imp.Draw)) + 
+      geom_boxplot(outlier.shape = NA) +
+      theme_classic() +
+      labs(fill = "Imputation\nindex")
+  }
+  if (is.null(qData.lg$Imp.Draw)) {
+    ggplot2::ggplot(df.plot, aes(x = Group, y= Intensity, fill = Group)) + 
+      geom_boxplot(outlier.shape = NA) +
+      theme_classic() 
+  }
 }
 
 df.plot <- data.lg %>% filter(ID %in% "AALEELVK" & Group %in% c("Point1","Point7"))
@@ -247,17 +255,48 @@ res_uni = post_mean_diff_uni(
 )
 
 ############ Graphsfor the article #################
-db_pept_vary = db.raw %>% filter(ID == "WCAVSEHEATK") %>% drop_na()
+db_pept_ups = db.raw %>% filter(ID == "WCAVSEHEATK") %>% drop_na()
 
 ## Graph illustration of the method 
 res_graph1_ups = post_mean_diff_uni(
-  data = db_pept_vary,
+  data = db_pept_ups,
   mu_0 = 25, 
   lambda_0 = 1,
   beta_0 = 1,
   alpha_0 = 2
 )
 
-plot_dif(res_graph1_ups, c('Point1', 'Point7'), peptide = "WCAVSEHEATK") +
+gg1.1 <- plot_dif(res_graph1_ups, c('Point1', 'Point7'), peptide = "WCAVSEHEATK") +
+  xlim(c(-20,30))
+gg2.1 <- plot_dif(res_graph1_ups, c('Point7', 'Point1'), peptide = "WCAVSEHEATK") +
   xlim(c(-20,30))
 
+
+db_pept_arath = db.raw %>% filter(ID == "EVQELAQEAAER") %>% drop_na()
+## Graph illustration of the method 
+res_graph1_arath = post_mean_diff_uni(
+  data = db_pept_arath,
+  mu_0 = 25, 
+  lambda_0 = 1,
+  beta_0 = 1,
+  alpha_0 = 2
+)
+
+gg1.2 <- plot_dif(res_graph1_arath, c('Point1', 'Point7'), peptide = "EVQELAQEAAER") +
+  xlim(c(-20,30))
+gg2.2 <- plot_dif(res_graph1_arath, c('Point7', 'Point1'), peptide = "EVQELAQEAAER") +
+  xlim(c(-20,30))
+
+cowplot::plot_grid(gg1.1, gg1.2, gg2.1, gg2.2, nrow = 2, ncol =2)
+
+#Add boxplots
+gg3.1 <- plot.qData(db.raw, 
+           pept = "WCAVSEHEATK",
+           cond = c("Point1","Point7"),
+           ylim = c(19, 29))
+gg3.2 <- plot.qData(db.raw, 
+                    pept = "EVQELAQEAAER",
+                    cond = c("Point1","Point7"),
+                    ylim = c(19,29))
+
+cowplot::plot_grid(gg1.1, gg1.2, gg2.1, gg2.2, gg3.1, gg3.2, nrow = 3, ncol =2)
