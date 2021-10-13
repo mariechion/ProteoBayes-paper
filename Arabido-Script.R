@@ -17,6 +17,18 @@ peptidesMQ_clean<-peptidesMQ[which(apply(is.na(peptidesMQ[,grep(pattern = "Inten
                                    & apply(is.na(peptidesMQ[,grep(pattern = "Intensity.Point7",colnames(peptidesMQ))]),1,sum)<3),]
 peptidesMQ_clean<-subset(peptidesMQ_clean, subset = peptidesMQ_clean$Reverse!="+" & 
                            peptidesMQ_clean$Potential.contaminant!="+")
+# ----------------------------------------------------------- #
+# Long format for raw (not imputed) data
+db.raw <- peptidesMQ_clean %>%
+  select(starts_with(c("Sequence","Leading", "Intensity."))) %>% 
+  pivot_longer(cols = starts_with("Intensity."), 
+               names_to = "Sample",
+               names_prefix = "Intensity.",
+               values_to = "Intensity") %>% 
+  mutate(., Group = gsub("_.*","",Sample)) %>% 
+  transmute(ID = Sequence, Protein = Leading.razor.protein,
+            Sample, Output = log2(Intensity), Group)
+
 
 # ----------------------------------------------------------- #
 # Load ARATH+UPS data imputed with MLE
@@ -95,8 +107,6 @@ df.pval %>% arrange(pval.rawp) %>% filter(Seq %in% c("AALEELVK","LAAEAYSIFR"))
 
 which(list.ID$ID %in% c("AALEELVK","LAAEAYSIFR"))
 
-<<<<<<< Updated upstream
-=======
 data.plot = data.lg %>% filter(ID %in%  c("AALEELVK","LAAEAYSIFR"))
 data.plot
 
@@ -188,8 +198,6 @@ plot.qData(data.lg,
            pept = "YALELLPVILPQAR",
            cond = c("Point1","Point7"))
 
-
->>>>>>> Stashed changes
 # De A-tu
 
 list_ID = data.lg$ID %>% unique()
@@ -212,14 +220,7 @@ res = post_mean_diff(
   nu_0 = 1
 )
 
-<<<<<<< Updated upstream
 pept = dataa$ID[1]
-=======
-gg1 = plot_dif(res, c('Point7', 'Point1'), peptide = 75) + xlim(c(-30,30))
-gg4 = plot_dif(res, c('Point1', 'Point7'), peptide = 1) + xlim(c(-30,30))
-gg5 = plot_dif(res, c('Point7', 'Point3'), peptide = 1) + xlim(c(-30,30))
-gg2 = plot_dif(res, c('Point3', 'Point7'), peptide = 1) + xlim(c(-30,30))
->>>>>>> Stashed changes
 
 plot_dif(res, c('Point1'), peptide = pept)
 plot_dif(res, c('Point7'), peptide = pept)
@@ -230,47 +231,6 @@ gg5 = plot_dif(res, c('Point4', 'Point3'), peptide = pept) + xlim(c(-10,10))
 gg2 = plot_dif(res, c('Point3', 'Point4'), peptide = pept) + xlim(c(-10,10))
 
 grid.arrange(gg1, gg4, gg5, gg2, nrow = 4)
-
-datab = data %>% filter(ID %in% list_ID[1:10])
-
-dimb = datab$ID %>% n_distinct()
-
-resb = post_mean_diff(
-  data = datab,
-  mu_0 = rep(0, dimb), 
-  lambda_0 = 1,
-  Sigma_0 = diag(1, nrow = dimb, ncol = dimb),
-  nu_0 = 20
-)
-
-pept = datab$ID[7]
-
-gg1b = plot_dif(resb, c('Point7', 'Point1'), peptide = pept) + xlim(c(-10,10))
-gg4b = plot_dif(resb, c('Point1', 'Point7'), peptide = pept) + xlim(c(-10,10))
-gg5b = plot_dif(resb, c('Point7', 'Point3'), peptide = pept) + xlim(c(-10,10))
-gg2b = plot_dif(resb, c('Point3', 'Point7'), peptide = pept) + xlim(c(-10,10))
-
-grid.arrange(gg1b, gg4b, gg5b, gg2b, nrow = 4)
-
-
-
-# datac = data %>%
-#   arrange(Imp.Draw,Sample, ID) %>% 
-#   mutate(Output = Intensity, Draw = Imp.Draw) %>% 
-#   select(- c(Intensity, Imp.Draw))
-
-dimc = datac$ID %>% n_distinct()
-
-sub_datac = datac %>%
-  filter(ID %in% list_ID[1:100])
-
-resc = post_mean_diff(
-  data = datac,
-  mu_0 = rep(0, dimc), 
-  lambda_0 = 1,
-  Sigma_0 = diag(1, nrow = dimc, ncol = dimc),
-  nu_0 = 1
-)
 
 ## Univariate case ##
 db = data %>% filter(Draw == 1) %>% select(- Draw)
@@ -286,4 +246,18 @@ res_uni = post_mean_diff_uni(
   alpha_0 = 10
 )
 
-plot()
+############ Graphsfor the article #################
+db_pept_vary = db.raw %>% filter(ID == "WCAVSEHEATK") %>% drop_na()
+
+## Graph illustration of the method 
+res_graph1_ups = post_mean_diff_uni(
+  data = db_pept_vary,
+  mu_0 = 25, 
+  lambda_0 = 1,
+  beta_0 = 1,
+  alpha_0 = 2
+)
+
+plot_dif(res_graph1_ups, c('Point1', 'Point7'), peptide = "WCAVSEHEATK") +
+  xlim(c(-20,30))
+

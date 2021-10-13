@@ -185,18 +185,31 @@ plot_dif = function(emp_dist, groups, peptide){
       filter(Group == groups[[2]]) %>% 
       pull(Mean)
   
-    db = tibble(Dif = db2 - db1)
+    dens <- density(db2 - db1, n = 5000)
+    CI = quantile(db2 - db1, prob= c(0.025, 0.975))
+    db_plot = tibble(x = dens$x, y = dens$y) %>% 
+     mutate(quant = factor(findInterval(x, CI)))
     bar = 0
   } else if(length(groups) == 1){
     db = emp_dist %>%
       filter(ID == peptide) %>%
       filter(Group == groups[[1]]) %>% 
-      select(Mean) %>% 
-      transmute(Dif = Mean)
-    bar = mean(db$Dif)
+      pull(Mean)  
+    dens <- density(db, n = 5000)
+    CI = quantile(db, prob= c(0.025, 0.975))
+    db_plot = tibble(x = dens$x, y = dens$y) %>% 
+      mutate(quant = factor(findInterval(x, CI)))
+    bar = mean(db)
   }
-  ggplot(db) +
-    geom_density(aes(x = Dif), fill = "#00B2EE") %>% return() +
+
+  ggplot(db_plot, aes(x = x, y = y)) +
+    geom_ribbon(aes(ymin=0, ymax=y, fill = quant)) +
     geom_vline(xintercept = bar, color = 'red') +
-    theme_classic()
+    scale_y_continuous(breaks = NULL, labels = NULL) +
+    ylab('Density') +
+    xlab('Difference of means') +
+    geom_vline(aes(xintercept = 0)) +
+    scale_fill_manual(values=c("#F8B9C5", "#AFC0E3", "#F8B9C5")) + 
+    theme_classic() +
+    theme(legend.position="none")
 }
