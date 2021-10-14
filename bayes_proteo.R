@@ -4,6 +4,7 @@ library(mvtnorm)
 library(ggplot2)
 library(Matrix)
 library(latex2exp)
+library(cowplot)
 
 post_mean_diff = function(
   data,
@@ -70,17 +71,18 @@ post_mean_diff = function(
       
       cov_yn = cov_yn + tcrossprod(centred_y)
     }
-    
+
     centred_mean = mean_yn_k - mu_0
     ## Compute the updated posterior hyper-parameters
     mu_N = (lambda_0 * mu_0 + N_k * mean_yn_k) / (lambda_0 + N_k) 
     lambda_N = lambda_0 + N_k
     Sigma_N = Sigma_0 + cov_yn + 
-      (lambda_0 * N_k) / lambda_N * tcrossprod(centred_mean)
+      ((lambda_0 * N_k) / lambda_N) * tcrossprod(centred_mean)
     nu_N = nu_0 + N_k
+    P = length(mu_0) # dimension of the vectors and matrices
     ## Draw from the adequate T-distribution
-    rmvt(n = 10000, sigma = Sigma_N / (nu_N * lambda_N),
-                    df = nu_N, delta = mu_N) %>% 
+    rmvt(n = 10000, sigma = Sigma_N / ((nu_N - P + 1) * lambda_N),
+                    df = nu_N - P + 1, delta = mu_N) %>% 
       return()
   }
   
@@ -150,19 +152,18 @@ post_mean_diff_uni = function(
       
       cov_yn = cov_yn + (yn_k - mean_yn_k)^2
     }
-    
-    centred_mean = 
+
     ## Compute the updated posterior hyper-parameters
     mu_N = (lambda_0 * mu_0 + N_k * mean_yn_k) / (lambda_0 + N_k) 
     lambda_N = lambda_0 + N_k
-    beta_N = beta_0 + cov_yn + 
-      (lambda_0 * N_k) / lambda_N * (mean_yn_k - mu_0)^2
+    beta_N = beta_0 + 0.5 * cov_yn + 
+      ((lambda_0 * N_k) / (2 * lambda_N)) * (mean_yn_k - mu_0)^2
     alpha_N = alpha_0 + N_k / 2
     ## Draw from the adequate T-distribution
 
     tibble(
       'Group' = k,
-      'Mean' = mu_N + sqrt(beta_N) * rt(n = 10000, df = alpha_N)
+      'Mean' = mu_N + sqrt(beta_N/(lambda_N*alpha_N)) * rt(n=10000, df=2*alpha_N)
       )%>%
       return()
   }

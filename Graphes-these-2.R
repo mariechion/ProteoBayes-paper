@@ -1,10 +1,10 @@
-load("Arabido_raw_data_lg", )
+load("Arabido_raw_data_lg")
 load("Arabido_imp_data_lg")
 
 source("bayes_proteo.R")
 
 pept_ups = "AALEELVK" 
-pept_arath = "EVQELAQEAAER" 
+pept_arath = "ALADPNTDVR" 
 db_pept_ups = db.raw %>% filter(ID == pept_ups) %>% drop_na()
 db_pept_arath = db.raw %>% filter(ID == pept_arath) %>% drop_na()
 
@@ -31,7 +31,7 @@ res_graph2_ups_multi = post_mean_diff(
   mu_0 = rep(20, dim_prot_ups), 
   lambda_0 = 1,
   Sigma_0 = diag(1, ncol = dim_prot_ups, nrow = dim_prot_ups),
-  nu_0 = 1
+  nu_0 = 9
 ) %>% filter(ID == pept_ups)
 
 res_graph2_arath_uni = post_mean_diff_uni(
@@ -49,23 +49,23 @@ res_graph2_arath_multi = post_mean_diff(
   mu_0 = rep(20, dim_prot_arath), 
   lambda_0 = 1,
   Sigma_0 = diag(1, ncol = dim_prot_arath, nrow = dim_prot_arath),
-  nu_0 = 1
+  nu_0 = 9
 ) %>% filter(ID == pept_arath)
 
 gg2_1 = plot_dif(res_graph2_ups_uni, c('Point1', 'Point7'), peptide = pept_ups) +
-  xlim(c(-30,30)) + 
+  xlim(c(-5,11)) + 
   xlab(TeX('$\\mu_1 - \\mu_7$'))
 gg2_2 = plot_dif(res_graph2_ups_multi, c('Point1', 'Point7'), peptide = pept_ups) +
-  xlim(c(-30,30)) + 
+  xlim(c(-5,11)) + 
   xlab(TeX('$\\mu_1 - \\mu_7$'))
 gg2_3 = plot_dif(res_graph2_arath_uni, c('Point1', 'Point7'), peptide = pept_arath) +
-  xlim(c(-10,10)) + 
+  xlim(c(-5,5)) + 
   xlab(TeX('$\\mu_1 - \\mu_7$'))
 gg2_4 = plot_dif(res_graph2_arath_multi, c('Point1', 'Point7'), peptide = pept_arath) +
-  xlim(c(-10,10)) + 
-  xlab(TeX('$\\mu_1 - \\mu_7$'))
+   xlim(c(-5,5)) + 
+   xlab(TeX('$\\mu_1 - \\mu_7$'))
 
-png('FIGURES/ch5_graph2.png', res = 600, width = 4800, height = 3600, units = "px")
+#png('FIGURES/ch5_graph2.png', res = 600, width = 4800, height = 3600, units = "px")
 cowplot::plot_grid(gg2_1, gg2_3, gg2_2, gg2_4, nrow = 2, ncol = 2)
-dev.off()
+#dev.off()
 
