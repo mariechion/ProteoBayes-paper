@@ -176,7 +176,7 @@ post_mean_diff_uni = function(
     return()
 }
 
-plot_dif = function(emp_dist, groups, peptide){
+plot_dif = function(emp_dist, groups, peptide, prob = TRUE){
   if(length(groups) == 2){
     db1 = emp_dist %>%
       filter(ID == peptide) %>%
@@ -186,31 +186,52 @@ plot_dif = function(emp_dist, groups, peptide){
       filter(ID == peptide) %>% 
       filter(Group == groups[[2]]) %>% 
       pull(Mean)
-  
-    dens <- density(db2 - db1, n = 5000)
-    CI = quantile(db2 - db1, prob= c(0.025, 0.975))
-    db_plot = tibble(x = dens$x, y = dens$y) %>% 
-     mutate(quant = factor(findInterval(x, CI)))
+    
+    db = db1 - db2
     bar = 0
   } else if(length(groups) == 1){
     db = emp_dist %>%
       filter(ID == peptide) %>%
       filter(Group == groups[[1]]) %>% 
       pull(Mean)  
-    dens <- density(db, n = 5000)
-    CI = quantile(db, prob= c(0.025, 0.975))
-    db_plot = tibble(x = dens$x, y = dens$y) %>% 
-      mutate(quant = factor(findInterval(x, CI)))
+  
     bar = mean(db)
   }
-
-  ggplot(db_plot, aes(x = x, y = y)) +
-    geom_ribbon(aes(ymin=0, ymax=y, fill = quant)) +
+  
+  dens <- density(db, n = 5000)
+  CI = quantile(db, prob= c(0.025, 0.975))
+  db_plot = tibble(x = dens$x, y = dens$y) %>% 
+    mutate(quant = factor(findInterval(x, CI)))
+  
+  g1 = str_sub(groups[[1]], start = -1)
+  g2 = str_sub(groups[[2]], start = -1)
+  
+  gg = ggplot(db_plot) +
+    geom_ribbon(aes(x = x, y = y, ymin=0, ymax=y, fill = quant)) +
     geom_vline(xintercept = bar, color = 'red') +
     ylab('Density') +
-    xlab('Difference of means') +
+    xlab(bquote(mu[.(g1)] - mu[.(g2)])) +
     geom_vline(aes(xintercept = 0)) +
     scale_fill_manual(values=c("#F8B9C5", "#AFC0E3", "#F8B9C5")) + 
     theme_classic() + 
     theme(legend.position="none")
+  
+  if(prob == TRUE){
+    p_inf = (sum(db<0)/length(db)) %>% round(2) %>% as.character()
+    p_sup = (sum(db>0)/length(db)) %>% round(2) %>% as.character()
+    exp_left = bquote(P(mu[.(g1)] <= mu[.(g2)]) == .(p_inf))
+    exp_right = bquote(P(mu[.(g1)] <= mu[.(g2)]) == .(p_sup))
+    
+    gg = gg + geom_label(data = tibble(bar = bar), aes(
+      x = bar,
+      y = Inf, 
+      label = deparse(exp_left)
+    ), parse = T, size = 4, hjust=1, vjust=1) +
+      geom_label(data = tibble(bar = bar), aes(
+        x = bar,
+        y = Inf, 
+        label = deparse(exp_right)
+      ), parse = T, size = 4, hjust=0, vjust=1)
+  }
+  return(gg)
 }
