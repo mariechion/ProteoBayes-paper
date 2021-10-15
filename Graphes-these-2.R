@@ -4,7 +4,7 @@ load("Arabido_imp_data_lg")
 source("bayes_proteo.R")
 
 pept_ups = "AALEELVK" 
-pept_arath = "ALADPNTDVR" 
+pept_arath = "EVQELAQEAAER" 
 db_pept_ups = db.raw %>% filter(ID == pept_ups) %>% drop_na()
 db_pept_arath = db.raw %>% filter(ID == pept_arath) %>% drop_na()
 
@@ -54,10 +54,10 @@ res_graph2_arath_multi = post_mean_diff(
   nu_0 = 10
 ) %>% filter(ID == pept_arath)
 
-gg2_1 = plot_dif(res_graph2_ups_uni, c('Point1', 'Point7'), peptide = pept_ups) +
-  xlim(c(-1,7))
-gg2_2 = plot_dif(res_graph2_ups_multi, c('Point1', 'Point7'), peptide = pept_ups) +
-  xlim(c(-1,7))
+gg2_1 = plot_dif(res_graph2_ups_uni, c('Point5', 'Point7'), peptide = pept_ups) +
+  xlim(c(-4,1))
+gg2_2 = plot_dif(res_graph2_ups_multi, c('Point5', 'Point7'), peptide = pept_ups) +
+  xlim(c(-4,1))
 # gg2_3 = plot_dif(res_graph2_arath_uni, c('Point4', 'Point7'), peptide = pept_arath) +
 #   xlim(c(-5,5)) 
 # gg2_4 = plot_dif(res_graph2_arath_multi, c('Point4', 'Point7'), peptide = pept_arath) +

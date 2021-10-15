@@ -33,7 +33,7 @@ res_graph3_ups_uni_imp = post_mean_diff_uni(
   mu_0 = 20, 
   lambda_0 = 1,
   beta_0 = 1,
-  alpha_0 = 1
+  alpha_0 = 2
 )
 
 res_graph3_arath_uni = post_mean_diff_uni(
@@ -56,10 +56,10 @@ res_graph3_arath_uni_imp = post_mean_diff_uni(
 # gg3_2 = plot_dif(res_graph3_ups_uni_imp, c('Point1', 'Point7'), peptide = pept_ups) +
 #   xlim(c(-1,10)) + ylim(c(0,0.4))
 gg3_3 = plot_dif(res_graph3_arath_uni, c('Point1', 'Point4'), peptide = pept_arath) +
-  xlim(c(-3,4)) + ylim(c(0,0.8))
+  xlim(c(-3,4)) + ylim(c(0,1))
 gg3_4 = plot_dif(res_graph3_arath_uni_imp, c('Point1', 'Point4'), peptide = pept_arath) +
-  xlim(c(-3,4)) + ylim(c(0,0.8)) 
+  xlim(c(-3,4)) + ylim(c(0,1)) 
 
-#png('FIGURES/ch5_graph3.png', res = 600, width = 4800, height = 3600, units = "px")
+png('FIGURES/ch5_graph3.png', res = 600, width = 4800, height = 3600, units = "px")
 cowplot::plot_grid(gg3_3, gg3_4, nrow = 2, ncol = 1)
-#dev.off()
+dev.off()
