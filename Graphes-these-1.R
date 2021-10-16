@@ -40,12 +40,12 @@ res_graph1_ups = post_mean_diff_uni(
 )
 
 gg1.1 <- plot_dif(res_graph1_ups, c('Point1', 'Point7'), peptide = "AALEELVK") +
-  xlim(c(-30,30))
+  xlim(c(-10,10))
 gg2.1 <- plot_dif(res_graph1_ups, c('Point7', 'Point1'), peptide = "AALEELVK") +
-  xlim(c(-30,30))
+  xlim(c(-10,10))
 
 
-db_pept_arath = db.raw %>% filter(ID == "EVQELAQEAAER") %>% drop_na()
+db_pept_arath = db.raw %>% filter(ID == "VLPLIIPILSK") %>% drop_na()
 ## Graph illustration of the method 
 res_graph1_arath = post_mean_diff_uni(
   data = db_pept_arath,
@@ -55,20 +55,32 @@ res_graph1_arath = post_mean_diff_uni(
   alpha_0 = 2
 )
 
-gg1.2 <- plot_dif(res_graph1_arath, c('Point1', 'Point7'), peptide = "EVQELAQEAAER") +
-  xlim(c(-30,30))
-gg2.2 <- plot_dif(res_graph1_arath, c('Point7', 'Point1'), peptide = "EVQELAQEAAER") +
-  xlim(c(-30,30))
+gg1.2 <- plot_dif(res_graph1_arath, c('Point1', 'Point7'), peptide = "VLPLIIPILSK") +
+  xlim(c(-10,10))
+gg2.2 <- plot_dif(res_graph1_arath, c('Point7', 'Point1'), peptide = "VLPLIIPILSK") +
+  xlim(c(-10,10))
 
 cowplot::plot_grid(gg1.1, gg1.2, gg2.1, gg2.2, nrow = 2, ncol =2)
-
+ 
 #Add boxplots
 gg3.1 <- plot.qData(db.raw, 
                     pept = "AALEELVK",
-                    cond = c("Point1","Point7")) + ylim(20,30) + theme(legend.position = "none")
+                    cond = c("Point1","Point7")) + ylim(21,29) + theme(legend.position = "none")
 gg3.2 <- plot.qData(db.raw, 
-                    pept = "EVQELAQEAAER",
-                    cond = c("Point1","Point7")) + ylim(20,30) + theme(legend.position = "none")
+                    pept = "VLPLIIPILSK",
+                    cond = c("Point1","Point7")) + ylim(21,29) + theme(legend.position = "none")
 
-cowplot::plot_grid(gg1.1, gg1.2, gg2.1, gg2.2, gg3.1, gg3.2, nrow = 3, ncol =2,
-                   labels = c("UPS", "ARATH"))
+cowplot::plot_grid(gg1.1, gg1.2, gg2.1, gg2.2, gg3.1, gg3.2, nrow = 3, ncol =2)
+
+png('FIGURES/ch5_graph1.png', res = 600, width = 4000, height = 4800, units = "px")
+cowplot::plot_grid(gg1.1, gg1.2, gg2.1, gg2.2, gg3.1, gg3.2, nrow = 3, ncol =2)
+dev.off()
+
+png('FIGURES/ch5_graph1-1.png', res = 600, width = 3200, height = 4600, units = "px")
+cowplot::plot_grid(gg1.1, gg2.1, gg3.1, nrow = 3, ncol =1)
+dev.off()
+
+png('FIGURES/ch5_graph1-2.png', res = 600, width = 3200, height = 4600, units = "px")
+cowplot::plot_grid(gg1.2, gg2.2, gg3.2, nrow = 3, ncol =1)
+dev.off()
+
