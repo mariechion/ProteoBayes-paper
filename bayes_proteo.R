@@ -220,7 +220,7 @@ plot_dif = function(emp_dist, groups, peptide, prob = TRUE){
     p_inf = (sum(db<0)/length(db)) %>% round(2) %>% as.character()
     p_sup = (sum(db>0)/length(db)) %>% round(2) %>% as.character()
     exp_left = bquote(P(mu[.(g1)] <= mu[.(g2)]) == .(p_inf))
-    exp_right = bquote(P(mu[.(g1)] <= mu[.(g2)]) == .(p_sup))
+    exp_right = bquote(P(mu[.(g1)] >= mu[.(g2)]) == .(p_sup))
     
     gg = gg + geom_label(data = tibble(bar = bar), aes(
       x = bar,

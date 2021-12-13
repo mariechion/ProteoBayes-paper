@@ -62,8 +62,8 @@ gg2_2 = plot_dif(res_graph2_ups_multi, c('Point5', 'Point7'), peptide = pept_ups
 #   xlim(c(-5,5)) 
 # gg2_4 = plot_dif(res_graph2_arath_multi, c('Point4', 'Point7'), peptide = pept_arath) +
 #    xlim(c(-5,5))
-
-#png('FIGURES/ch5_graph2.png', res = 600, width = 4800, height = 3600, units = "px")
-cowplot::plot_grid(gg2_1, gg2_2, nrow = 2, ncol = 1)
-#dev.off()
+# 
+# png('FIGURES/ch5_graph2.png', res = 600, width = 4800, height = 3600, units = "px")
+# cowplot::plot_grid(gg2_1, gg2_2, nrow = 2, ncol = 1)
+# dev.off()
 
