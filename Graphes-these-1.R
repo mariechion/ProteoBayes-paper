@@ -72,8 +72,8 @@ gg3.2 <- plot.qData(db.raw,
 
 cowplot::plot_grid(gg1.1, gg1.2, gg2.1, gg2.2, gg3.1, gg3.2, nrow = 3, ncol =2)
 
-png('FIGURES/ch5_graph1.png', res = 600, width = 4000, height = 4800, units = "px")
-cowplot::plot_grid(gg1.1, gg1.2, gg2.1, gg2.2, gg3.1, gg3.2, nrow = 3, ncol =2)
+png('FIGURES/ch5_graph1.png', res = 600, width = 4800, height = 3600, units = "px")
+cowplot::plot_grid(gg1.1, gg1.2, gg3.1, gg3.2, nrow = 2, ncol =2)
 dev.off()
 
 png('FIGURES/ch5_graph1-1.png', res = 600, width = 3200, height = 4600, units = "px")

@@ -8,7 +8,7 @@ library(cowplot)
 
 post_mean_diff = function(
   data,
-  mu_0, 
+  mu_0,
   lambda_0,
   Sigma_0,
   nu_0
