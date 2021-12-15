@@ -40,9 +40,9 @@ res_graph1_ups = post_mean_diff_uni(
 )
 
 gg1.1 <- plot_dif(res_graph1_ups, c('Point1', 'Point7'), peptide = "AALEELVK") +
-  xlim(c(-10,10))
+  xlim(c(-8,5)) + ylim(c(0,0.7))
 gg2.1 <- plot_dif(res_graph1_ups, c('Point7', 'Point1'), peptide = "AALEELVK") +
-  xlim(c(-10,10))
+  xlim(c(-8,5)) + ylim(c(0,0.7))
 
 
 db_pept_arath = db.raw %>% filter(ID == "VLPLIIPILSK") %>% drop_na()
@@ -56,9 +56,9 @@ res_graph1_arath = post_mean_diff_uni(
 )
 
 gg1.2 <- plot_dif(res_graph1_arath, c('Point1', 'Point7'), peptide = "VLPLIIPILSK") +
-  xlim(c(-10,10))
+  xlim(c(-8,5)) + ylim(c(0,0.7))
 gg2.2 <- plot_dif(res_graph1_arath, c('Point7', 'Point1'), peptide = "VLPLIIPILSK") +
-  xlim(c(-10,10))
+  xlim(c(-8,5)) + ylim(c(0,0.7))
 
 cowplot::plot_grid(gg1.1, gg1.2, gg2.1, gg2.2, nrow = 2, ncol =2)
  
@@ -72,7 +72,7 @@ gg3.2 <- plot.qData(db.raw,
 
 cowplot::plot_grid(gg1.1, gg1.2, gg2.1, gg2.2, gg3.1, gg3.2, nrow = 3, ncol =2)
 
-png('FIGURES/ch5_graph1.png', res = 600, width = 4800, height = 3600, units = "px")
+png('FIGURES/ch5_graph1.png', res = 600, width = 4800, height = 2400, units = "px")
 cowplot::plot_grid(gg1.1, gg1.2, gg3.1, gg3.2, nrow = 2, ncol =2)
 dev.off()
 
