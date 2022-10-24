@@ -27,7 +27,7 @@ plot.qData <- function(qData.lg, pept = NULL, cond = NULL, ...){
 
 
 
-############ Graphsfor the article #################
+############ Graphs for the article #################
 db_pept_ups = db.raw %>% filter(ID == "AALEELVK") %>% drop_na()
 
 ## Graph illustration of the method 
