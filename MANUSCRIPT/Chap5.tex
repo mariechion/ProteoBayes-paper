@@ -1,0 +1,562 @@
+In the state-of-the-art approach of \cite{smythLinearModelsEmpirical2004}, as well as in our methodology described in \Cref{Chap:3}, a hierarchical model is used to deduce the posterior distribution of the variance estimator for each analyte. The expectation of this distribution is then used as a moderated estimation of variance and is injected directly in the expression of the $t$-statistic. However, instead of relying simply on the moderated estimates, it could make sense to take advantage from a fully Bayesian approach. 
+
+The topic of missing data has been under investigation for a long time in the Bayesian community,
+ in particular in simple cases involving conjugate priors \citep{dominiciConjugateAnalysisMultivariate2000}.
+Despite such theoretical advances, practitionners in proteomics often still rely on old fashioned tools, like $t$-tests, for conducting most of the differential analyses.
+Recently, some authors provided convenient approaches and associated implementations \citep{kruschkeBayesianEstimationSupersedes2013} for handling differential analysis problems with Bayesian inference. 
+For instance, the \texttt{R} package \texttt{BEST} (standing for Bayesian Estimation Supersedes T-test) has widely contributed to the diffusion of those practices.
+The present chapter follows a similar idea, by taking advantage of standard results from Bayesian inference with conjugate priors in hierarchical models, to derive a methodology that is tailored to handle our multiple imputation context. 
+Furthermore, we also aim at tackling the more general problem of multivariate differential analysis, to account for possible correlations between analytes.
+
+By defining a hierarchical model with prior distributions both on mean and variance parameters, we aim at providing an adequate quantification of the uncertainty for differential analysis. 
+Inference is thus performed by computing the posterior distribution for the difference of mean peptide intensity between two experimental conditions.
+In contrast to more flexible models that can be achieved with hierarchical structures, our choice of conjugate priors maintains analytical expressions for direcly sampling from posterior distributions without needing MCMC methods, resulting in a fast inference procedure in practice.
+
+\Cref{sec:ch5:model_uni} presents well-known results about Bayesian inference for Gaussian-inverse-gamma conjugated priors.  Following analogous results for the multivariate case, \Cref{sec:ch5:model_multi} introduces a general Bayesian framework for evaluating mean differences in our differential proteomics context. \Cref{sec:5:uncorr} provides insights on the particular case where the considered analytes are uncorrelated.  Finally, \Cref{sec:ch5:experiments} illustrates hands-on examples on a real proteomics dataset and highlights the benefits of such a multivariate Bayesian framework for practitioners.
+
+
+\section{Background: Bayesian inference for Gaussian-inverse-gamma conjugated priors}
+\label{sec:ch5:model_uni}
+Before deriving our complete workflow, let us first recall some classical results from Bayesian inference that will further serve our aim.  The purpose of this section is twofold.  By first fully detailing proofs of results in the univariate case that are often admitted, we pave the way to the development of our subsequent contribution in a multivariate framework. 
+
+Let us assume a generative model such as:
+\begin{equation*}
+	 y =\mu + \varepsilon,
+\end{equation*}
+\noindent where:
+\begin{itemize}
+    \item $\mu \mid \sigma^2 \sim \mathcal{N} \left(\mu_0, \dfrac{1}{\lambda_0} \sigma^2 \right)$ is the prior distribution over the mean,
+    \item $\varepsilon \sim \mathcal{N} (0, \sigma^2)$ is the error term,
+    \item $\sigma^2 \sim \Gamma^{-1} (\alpha_0, \beta_0)$ is the prior distribution over the variance,
+\end{itemize}
+\noindent with $\{ \mu_0, \lambda_0, \alpha_0, \beta_0 \}$ an arbitrary set of prior hyper-parameters.
+We provide in \Cref{graph_model_uni} an illustration of the hypotheses taken over such hierarchical generative model.
+\begin{figure}[ht]
+\begin{center}
+\begin{tikzpicture}
+  % Define nodes
+  
+  \node[obs]                               (y) {$y$};
+  
+  \node[latent, left=of y,  xshift=-0.2cm, yshift= 0.9cm](mu) {$\mu$};
+  \node[const, above=of mu, xshift=-0.5cm, yshift= 1cm] (m) {$\mu_0$};
+  \node[const, above=of mu, xshift= 0.5cm, yshift= 1cm] (l) {$\lambda_0$};
+
+  \node[latent, above=of y, yshift= 0.8cm] (s) {$\sigma^2$};
+  \node[const, above=of s,  xshift=-0.5cm] (a) {$\alpha_0$};
+  \node[const, above=of s,  xshift= 0.5cm] (b) {$\beta_0$};
+
+  \factor[above=of mu] {s-mu} {left:$\mathcal{N}$} {m,s,l} {mu};
+  \factor[above=of s] {mu-mu} {left:$\Gamma^{-1}$} {a,b} {s};
+  \factor[above=of y] {mu-s} {right:$\mathcal{N}$} {mu,s} {y};  
+  
+  % Connect the nodes
+  % \edge {mu,s} {y} ;
+
+  % Plates
+  % \plate {} {(mu)(y)(s)} {$\forall k = 1, \dots, k$} ;
+
+\end{tikzpicture}
+\caption{Graphical model of the hierarchical structure when assuming a Gaussian-inverse-gamma prior, conjugated with a Gaussian likelihood with unknown mean and variance.}
+\label{graph_model_uni} 
+\end{center}     
+\end{figure}
+From the previous hypotheses, we can deduce the likelihood of the model for a sample of observations $\yb = \{ y_1, \dots, y_N \}$: 
+\begin{align*}
+\displaystyle
+	 p(\yb \mid \mu, \sigma^2) 
+	 &= \prod_{n = 1}^{N} p(y_n \mid \mu, \sigma^2) \\
+	 &= \prod_{n = 1}^{N} \mathcal{N} \left( y_n; \ \mu, \sigma^2 \right),
+\end{align*}
+
+Let us recall that such assumptions consists in defining a prior Gaussian-inverse-gamma distribution, which is conjugated with the Gaussian distribution with unknown mean $\mu$ and variance $\sigma^2$. 
+The probability density function (PDF) of such a prior distribution can be written as:
+\begin{equation*}
+\displaystyle
+	 p(\mu, \sigma^2 \mid \mu_0, \lambda_0, \alpha_0, \beta_0) = \frac{\sqrt{\lambda_0}}{\sqrt{2 \pi}} \frac{\beta_0^{\alpha_0}}{\Gamma(\alpha_0)}\left(\frac{1}{\sigma^{2}}\right)^{\alpha_0 + \frac{3}{2}} \exp \left(-\frac{2 \beta_0 +\lambda_0(\mu -\mu_0)^{2}}{2 \sigma^{2}}\right).
+\end{equation*}
+In this particular case, it is a well-known result that the inference is tractable and the posterior distribution remains a Gaussian-inverse-gamma \citep{murphyConjugateBayesianAnalysis2007}. 
+Let us recall below the complete development of this derivation by identification of the analytical form (we ignore conditioning over the hyper-parameters for convenience):
+\begin{align*}
+\displaystyle
+	p(\mu, \sigma^2 \mid \yb) 
+	& \propto p(\yb \mid \mu, \sigma^2) \times p(\mu, \sigma^2) \\
+	&= \left( \dfrac{1}{2 \pi \sigma^2} \right)^{\frac{N}{2}} \exp \left(- \dfrac{1}{2 \sigma^2} \sum\limits_{n = 1}^{N}(y_n - \mu)^2 \right) \\
+	& \hspace{0.5cm} \times \frac{\sqrt{\lambda_0}}{\sqrt{2 \pi}} \frac{\beta_0^{\alpha_0}}{\Gamma(\alpha_0)}\left(\frac{1}{\sigma^{2}}\right)^{\alpha_0 + \frac{3}{2}} \exp \left(-\frac{2 \beta_0 +\lambda_0(\mu -\mu_0)^{2}}{2 \sigma^{2}}\right) \\
+	& \propto \left(\frac{1}{\sigma^{2}}\right)^{\alpha_0 + \frac{N + 3}{2}} \exp \left(\underbrace{-\frac{2 \beta_0 +\lambda_0(\mu -\mu_0)^{2} + \sum\limits_{n = 1}^{N}(y_n - \mu)^2}{2 \sigma^{2}}}_{\mathcal{A}}\right).
+\end{align*}
+Let us introduce \Cref{lem:ch5} below to decompose the term $\mathcal{A}$ as desired:
+\begin{lemma}
+\label{lem:ch5}
+Assume a set $\boldsymbol{x_{\textcolor{colN}{1}}}, \dots, \boldsymbol{x_{\sampleN}} \in \mathbb{R}^{q}$, and note $\bar{\boldsymbol{x}} = \dfrac{1}{\sampleN} \sum\limits_{\samplen = 1}^{\sampleN}{\boldsymbol{x_{\samplen}}}$ the associated average vector. For any $\boldsymbol{\mu} \in \mathbb{R}^{q}$: 
+\begin{align*}
+\displaystyle
+	 \sum\limits_{\samplen = 1}^{\sampleN}{(\boldsymbol{x_{\samplen}} - \boldsymbol{\mu})(\boldsymbol{x_{\samplen}} - \boldsymbol{\mu})^{\intercal}}
+	 &=  \sampleN (\bar{\boldsymbol{x}} - \boldsymbol{\mu})(\bar{\boldsymbol{x}} - \boldsymbol{\mu})^{\intercal} + \sum\limits_{\samplen = 1}^{\sampleN}{(\boldsymbol{x_{\samplen}} - \bar{\boldsymbol{x}})(\boldsymbol{x_{\samplen}} - \bar{\boldsymbol{x}})^{\intercal}}.
+\end{align*}
+\end{lemma}
+\begin{proof}
+	\begin{align*}
+	\displaystyle
+	 \sum\limits_{\samplen = 1}^{{\sampleN}}{(\boldsymbol{x_{\samplen}} - \boldsymbol{\mu})(\boldsymbol{x_{\samplen}} - \boldsymbol{\mu})^{\intercal}}
+	 &= \sum\limits_{\samplen = 1}^{{\sampleN}}{\boldsymbol{x_{\samplen}}\boldsymbol{x_{\samplen}}^{\intercal} + \boldsymbol{\mu}\boldsymbol{\mu}^{\intercal} - 2 \boldsymbol{x_{\samplen}} \boldsymbol{\mu}^{\intercal}} \\
+	 &= {\sampleN}\boldsymbol{\mu}\boldsymbol{\mu}^{\intercal} - 2 {\sampleN} \bar{\boldsymbol{x}}\boldsymbol{\mu}^{\intercal} + \sum\limits_{\samplen = 1}^{{\sampleN}}{\boldsymbol{x_{\samplen}}\boldsymbol{x_{\samplen}}^{\intercal}} \\
+	 &= {\sampleN}\boldsymbol{\mu}\boldsymbol{\mu}^{\intercal} + {\sampleN}\bar{\boldsymbol{x}}\bar{\boldsymbol{x}}^{\intercal} + {\sampleN}\bar{\boldsymbol{x}}\bar{\boldsymbol{x}}^{\intercal} - 2 {\sampleN} \bar{\boldsymbol{x}}\bar{\boldsymbol{x}}^{\intercal} - 2 {\sampleN} \bar{\boldsymbol{x}} \boldsymbol{\mu}^{\intercal} + \sum\limits_{\samplen = 1}^{{\sampleN}}{\boldsymbol{x_{\samplen}}\boldsymbol{x_{\samplen}}^{\intercal}} \\
+	 &= {\sampleN} \left(\bar{\boldsymbol{x}}\bar{\boldsymbol{x}}^{\intercal} - \boldsymbol{\mu}\boldsymbol{\mu}^{\intercal} - 2 \bar{\boldsymbol{x}} \boldsymbol{\mu}^{\intercal} \right)  + \sum\limits_{\samplen = 1}^{{\sampleN}}{\boldsymbol{x_{\samplen}}\boldsymbol{x_{\samplen}}^{\intercal} + \bar{\boldsymbol{x}}\bar{\boldsymbol{x}}^{\intercal} - 2 \boldsymbol{x_{\samplen}} \bar{\boldsymbol{x}}^{\intercal}} \\
+	 &= {\sampleN} \left(\bar{\boldsymbol{x}} - \boldsymbol{\mu} \right)\left(\bar{\boldsymbol{x}} - \boldsymbol{\mu} \right)^{\intercal}  + \sum\limits_{\samplen = 1}^{{\sampleN}}{(\boldsymbol{x_{\samplen}} - \bar{\boldsymbol{x}})(\boldsymbol{x_{\samplen}} - \bar{\boldsymbol{x}})^{\intercal}}.
+\end{align*}
+\end{proof}
+Applying this result in our context for $q=1$, we obtain:
+\begin{align*}
+\displaystyle
+	\mathcal{A} 
+	&= -\frac{1}{2 \sigma^{2}} \left( 2 \beta_0 +\lambda_0(\mu -\mu_0)^{2} + {\sampleN}(\bar{y} - \mu)^2 + \sum\limits_{\samplen = 1}^{{\sampleN}}(y_{\samplen} - \bar{y})^2 \right) \\
+	&= -\frac{1}{2 \sigma^{2}} \left( 2 \beta_0 + \sum\limits_{\samplen = 1}^{{\sampleN}}(y_{\samplen} - \bar{y})^2 + (\lambda_0 + {\sampleN}) \mu^2 - 2 \mu ({\sampleN} \bar{y} + \lambda_0 \mu_0) + {\sampleN} \bar{y}^2 + \lambda_0 \mu_0^2 \right) \\
+	&= -\frac{1}{2 \sigma^{2}} \Bigg( 2 \beta_0 + \sum\limits_{\samplen = 1}^{{\sampleN}}(y_{\samplen} - \bar{y})^2  +  {\sampleN} \bar{y}^2 + \lambda_0 \mu_0^2 \\ 
+	& \hspace{0.5cm} + (\lambda_0 + {\sampleN}) \left[ \mu^2 - 2 \mu \dfrac{{\sampleN} \bar{y} + \lambda_0 \mu_0}{\lambda_0 + {\sampleN}} + \left( \dfrac{{\sampleN} \bar{y} + \lambda_0 \mu_0}{\lambda_0 + {\sampleN}} \right)^2 - \left( \dfrac{{\sampleN} \bar{y} + \lambda_0 \mu_0}{\lambda_0 + {\sampleN}} \right)^2  \right] \Bigg) \\
+	&= -\frac{1}{2 \sigma^{2}} \Bigg( 2 \beta_0 + \sum\limits_{\samplen = 1}^{{\sampleN}}(y_{\samplen} - \bar{y})^2  + {\sampleN} \bar{y}^2 + \lambda_0 \mu_0^2  - \dfrac{({\sampleN} \bar{y} + \lambda_0 \mu_0)^2}{\lambda_0 + {\sampleN}} \\
+	&\hspace{0.5cm} + (\lambda_0 + {\sampleN}) \left( \mu - \dfrac{{\sampleN} \bar{y} + \lambda_0 \mu_0}{\lambda_0 + {\sampleN}}\right)^2 \Bigg) \\ 
+	&= -\frac{1}{2 \sigma^{2}} \Bigg( 2 \beta_0 + \sum\limits_{\samplen = 1}^{{\sampleN}}(y_{\samplen} - \bar{y})^2 + \dfrac{(\lambda_0 + {\sampleN}) ({\sampleN} \bar{y}^2 + \lambda_0 \mu_0^2) - {\sampleN}^2 \bar{y}^2 - \lambda_0^2 \mu_0^2 + 2 {\sampleN} \bar{y} \lambda_0 \mu_0}{\lambda_0 + {\sampleN}} \\
+	&\hspace{0.5cm} + (\lambda_0 + {\sampleN}) \left( \mu - \dfrac{{\sampleN} \bar{y} + \lambda_0 \mu_0}{\lambda_0 + {\sampleN}}\right)^2 \Bigg) \\ 
+	&= -\frac{1}{2 \sigma^{2}} \Bigg( 2 \beta_0 + \sum\limits_{\samplen = 1}^{{\sampleN}}(y_{\samplen} - \bar{y})^2 + \dfrac{\lambda_0 {\sampleN}}{\lambda_0 + {\sampleN}} (\bar{y} - \mu_0)^2 + (\lambda_0 + {\sampleN}) \left( \mu - \dfrac{{\sampleN} \bar{y} + \lambda_0 \mu_0}{\lambda_0 + {\sampleN}}\right)^2 \Bigg).
+\end{align*}
+Therefore, the above expression can be identified as a Gaussian-inverse-gamma PDF by writing:
+\begin{equation}
+\label{eq:ch5:uni_t_dist}
+\displaystyle
+	p(\mu, \sigma^2 \mid \yb) \propto \left(\frac{1}{\sigma^{2}}\right)^{\alpha_{\sampleN} + \frac{3}{2}} \exp \left(-\frac{2 \beta_{\sampleN} + \lambda_{\sampleN} (\mu - \mu_{\sampleN})^2}{2 \sigma^{2}} \right),
+\end{equation}
+\noindent with:
+\begin{itemize}
+	\item $\mu_{\sampleN} = \dfrac{\sampleN \bar{y} + \lambda_0 \mu_0}{\lambda_0 + N}$,
+	\item $\lambda_{\sampleN} = \lambda_0 + \sampleN$,
+	\item $\alpha_{\sampleN} = \alpha_0 + \dfrac{\sampleN}{2}$,
+	\item $\beta_{\sampleN} = \beta_0 + \dfrac{1}{2} \sum\limits_{\samplen = 1}^{\sampleN}(y_{\samplen} - \bar{y})^2 + \dfrac{\lambda_0 \sampleN}{2(\lambda_0 + \sampleN)} (\bar{y} - \mu_0)^2 $.
+\end{itemize}
+The normalising constant is induced by this characteristic formulation and the joint posterior distribution can be expressed as: 
+\begin{equation}
+\label{eq:ch5:joint_post_uni}
+	\mu, \sigma^2 \mid \yb \sim \mathcal{N} \Gamma^{-1} \left( \mu_{\sampleN}, \lambda_{\sampleN}, \alpha_{\sampleN}, \beta_{\sampleN} \right)
+\end{equation}
+Although these update formulas provide a valuable result in itself, we shall see in the sequel that we are more interested in the marginal distribution over the mean parameter $\mu$, for comparison purposes.
+Computing this marginal from the joint posterior in \Cref{eq:ch5:joint_post_uni} remains tractable as well by integrating over $\sigma^2$:
+\begin{align*}
+\displaystyle
+	p(\mu \mid \yb) 
+	&= \int p(\mu, \sigma^2 \mid \yb) \dif \sigma^2 \\
+	&= \frac{\sqrt{\lambda_{\sampleN}}}{\sqrt{2 \pi}} \frac{\beta_{\sampleN}^{\alpha_{\sampleN}}}{\Gamma(\alpha_{\sampleN})}  \int \left(\frac{1}{\sigma^{2}}\right)^{\alpha_{\sampleN} + \frac{3}{2}} \exp \left(-\frac{2 \beta_{\sampleN} +\lambda_{\sampleN}(\mu -\mu_{\sampleN})^{2}}{2 \sigma^{2}}\right) \dif \sigma^2 \\ 
+	&= \frac{\sqrt{\lambda_{\sampleN}}}{\sqrt{2 \pi}} \frac{\beta_{\sampleN}^{\alpha_{\sampleN}}}{\Gamma(\alpha_{\sampleN})}  \frac{\Gamma(\alpha_{\sampleN} + \frac{1}{2})}{( \beta_{\sampleN} +\frac{\lambda_{\sampleN}}{2}(\mu -\mu_{\sampleN})^{2})^{\alpha_{\sampleN} + \frac{1}{2}}} \\
+	& \hspace{0.5cm} \times \int \underbrace{\frac{( \beta_{\sampleN} + \frac{\lambda_{\sampleN}}{2}(\mu -\mu_{\sampleN})^{2})^{\alpha_{\sampleN} + \frac{1}{2}}}{\Gamma(\alpha_{\sampleN} + \frac{1}{2})} \left(\frac{1}{\sigma^{2}}\right)^{\alpha_{\sampleN} + \frac{1}{2} + 1} \exp \left(-\frac{ \beta_{\sampleN} +\frac{\lambda_{\sampleN}}{2}(\mu -\mu_{\sampleN})^{2}}{\sigma^{2}}\right)}_{\Gamma^{-1}(\alpha_{\sampleN} + \frac{1}{2}, \ \beta_{\sampleN} + \frac{\lambda_{\sampleN}}{2}(\mu -\mu_{\sampleN})^{2})} \dif \sigma^2 \\ 
+	&= \frac{\sqrt{\lambda_{\sampleN}}}{\sqrt{2 \pi}} \frac{\beta_{\sampleN}^{\alpha_{\sampleN}}}{\Gamma(\alpha_{\sampleN})}  \frac{\Gamma(\alpha_{\sampleN} + \frac{1}{2})}{( \beta_{\sampleN} +\frac{\lambda_{\sampleN}}{2}(\mu -\mu_{\sampleN})^{2})^{\alpha_{\sampleN} + \frac{1}{2}}} \times 1 \\
+	&=  \frac{\Gamma(\alpha_{\sampleN} + \frac{1}{2})}{\Gamma(\alpha_{\sampleN})} \frac{\sqrt{\lambda_{\sampleN}}}{\sqrt{2 \pi}} \frac{\beta_{\sampleN}^{\alpha_{\sampleN}+ \frac{1}{2}}}{\sqrt{\beta_{\sampleN}}} ( \beta_{\sampleN} +\frac{\lambda_{\sampleN}}{2}(\mu -\mu_{\sampleN})^{2})^{- \alpha_{\sampleN} - \frac{1}{2}} \\
+	&=  \frac{\Gamma(\alpha_{\sampleN} + \frac{1}{2})}{\Gamma(\alpha_{\sampleN})} \frac{\sqrt{\lambda_{\sampleN}}}{\sqrt{2 \pi}} \frac{\beta_{\sampleN}^{\alpha_{\sampleN}+ \frac{1}{2}}}{\sqrt{\beta_{\sampleN}}} \beta_{\sampleN}^{- \alpha_{\sampleN} - \frac{1}{2}} ( 1 +\frac{\alpha_{\sampleN} \lambda_{\sampleN}}{2 \alpha_{\sampleN} \beta_{\sampleN}}(\mu -\mu_{\sampleN})^{2})^{- \alpha_{\sampleN} - \frac{1}{2}} \\
+	&=  \frac{\Gamma(\alpha_{\sampleN} + \frac{1}{2})}{\Gamma(\alpha_{\sampleN})} \frac{\sqrt{\alpha_{\sampleN} \lambda_{\sampleN}}}{\sqrt{2 \alpha_{\sampleN} \pi \beta_{\sampleN}}} ( 1 +\frac{1}{2 \alpha_{\sampleN} } \frac{\alpha_{\sampleN} \lambda_{\sampleN} (\mu -\mu_{\sampleN})^{2}}{\beta_{\sampleN}} )^{- \alpha_{\sampleN} - \frac{1}{2}} \\
+	&=  \underbrace{\frac{\Gamma(\frac{\nu + 1}{2})}{\Gamma(\frac{\nu}{2})} \frac{1}{\sqrt{\pi \nu \hat{\sigma}^2}} ( 1 +\frac{1}{\nu } \frac{(\mu -\mu_{\sampleN})^{2}}{\hat{\sigma}^2})^{- \frac{\nu + 1}{2}}}_{T_{\nu}(\mu; \ \mu_{\sampleN}, \hat{\sigma}^2)},
+\end{align*}
+\noindent with:
+\begin{itemize}
+	\item $\nu = 2\alpha_{\sampleN}$,
+	\item $\hat{\sigma}^2 = \dfrac{\beta_{\sampleN}}{\alpha_{\sampleN} \lambda_{\sampleN}}$.
+\end{itemize}
+The marginal posterior distribution over $\mu$ can thus be expressed as a non-standardised Student's $t$-distribution that we express below in terms of the initial hyper-parameters:
+\begin{equation}
+\label{eq:ch5:t_dist_uni}
+	\mu \mid \yb \sim T_{2\alpha_0 + \sampleN} \left(\dfrac{\sampleN \bar{y} + \lambda_0 \mu_0}{\lambda_0 + \sampleN} , \dfrac{\beta_0 + \dfrac{1}{2} \sum\limits_{\samplen = 1}^{\sampleN}(y_n - \bar{y})^2 + \dfrac{\lambda_0 \sampleN}{2(\lambda_0 + \sampleN)} (\bar{y} - \mu_0)^2}{(\alpha_0 + \frac{\sampleN}{2})( \lambda_0 + \sampleN)} \right).
+\end{equation}
+The derivation of this analytical formula provides a valuable tool for computing straightforward posterior distribution for the mean parameter in such context. 
+We shall see in the next section how to leverage this approach to introduce a novel means' comparison methodology for a more general framework, to handle both multidimensional and missing data.
+
+\section{General Bayesian framework for evaluating mean differences}
+\label{sec:ch5:model_multi}
+Recalling our differential proteomics context that consists in assessing the differences in mean intensity values for $\peptP$ peptides or proteins quantified in $\sampleN$ samples divided into $\groupI$ conditions.
+As before, \Cref{graph_model_multi} illustrates the hierarchical generative structure assumed for each group $\groupi = 1, \dots, \groupI$.
+\begin{figure}[ht]
+\begin{center}
+\begin{tikzpicture}
+  % Define nodes
+  
+  \node[obs]                               (y) {$\yb_{\groupi}$};
+  
+  \node[latent, left=of y,  xshift=-0.2cm, yshift= 0.9cm](mu) {$\mub_{\groupi}$};
+  \node[const, above=of mu, xshift=-0.5cm, yshift= 1cm] (m) {$\mub_0$};
+  \node[const, above=of mu, xshift= 0.5cm, yshift= 1cm] (l) {$\lambda_0$};
+
+  \node[latent, above=of y, yshift= 0.8cm] (s) {$\Sigmab_{\groupi}$};
+  \node[const, above=of s,  xshift=-0.5cm] (a) {$\Sigmab_0$};
+  \node[const, above=of s,  xshift= 0.5cm] (b) {$\nu_0$};
+
+  \factor[above=of mu] {s-mu} {left:$\mathcal{N}$} {m,s,l} {mu};
+  \factor[above=of s] {mu-mu} {left:$\mathcal{W}^{-1}$} {a,b} {s};
+  \factor[above=of y] {mu-s} {right:$\mathcal{N}$} {mu,s} {y};  
+  
+  % Connect the nodes
+  % \edge {mu,s} {y} ;
+
+  % Plates
+  \plate {} {(mu)(y)(s)} {$\forall \groupi = 1, \dots, \groupI$} ;
+
+\end{tikzpicture}
+\caption{Graphical model of the hierarchical structure of the generative model for the vector $\yb_{\groupi}$ of peptide intensities in $\groupI$ groups of biological samples, \textit{i.e.} $\groupI$ experimental conditions.}
+\label{graph_model_multi} 
+\end{center}     
+\end{figure}
+
+Maintaining the notation analogous to previous ones, the generative model for $\yb_{\groupi} \in \mathbb{R}^{\peptP}$, can be written as:
+\begin{equation*}
+	 \yb_{\groupi} = \mub_{\groupi} + \boldsymbol{\varepsilon}_{\groupi}, \ \forall \groupi = 1, \dots,  \groupI,
+\end{equation*}
+\noindent where:
+\begin{itemize}
+    \item $\mub_{\groupi} \mid \Sigmab_{\groupi} \sim \mathcal{N} \left(\mub_0, \dfrac{1}{\lambda_0}\Sigmab_{\groupi} \right)$ is the prior mean intensities vector of the $\groupi$-th group,
+    \item $\boldsymbol{\varepsilon}_{\groupi} \sim \mathcal{N} (0, \Sigmab_{\groupi})$ is the error term of the $\groupi$-th group,
+    \item $\Sigmab_{\groupi} \sim \mathcal{W}^{-1} (\Sigmab_0, \nu_0)$ is the prior variance-covariance matrix of the $\groupi$-th group,
+\end{itemize}
+\noindent with $\{ \mub_0, \lambda_0, \Sigmab_0, \nu_0 \}$ a set of hyper-parameters that needs to be chosen as modelling hypotheses and $\mathcal{W}^{-1}$ represents the Inverse-Wishart distribution,  previously introduced in \Cref{sec:1-2:Wishart}, and used as the conjugate prior for an unknown covariance matrix of a multivariate Gaussian distribution.
+
+Traditionally, in Bayesian inference, those quantities need to be carefully chosen for the estimation to be as accurate as possible, in particular with low sample sizes. 
+The incorporation of expert or prior knowledge on the model would also come from the adequate setting of these hyper-parameters. 
+However, our final purpose in this chapter is not much about estimating but instead focused on comparing groups' mean (i.e. differential analysis).  
+Interestingly, providing a perfect estimation of the posterior distributions over $\{\mub_{\groupi} \}_{\groupi = 1, \dots, \groupI}$ does not appear as the main concern here, as the posterior difference of means (i.e. $p(\mub_{\groupi} - \mub_{\groupi^{\prime}} \mid \yb_{\groupi}, \yb_{{\groupi}^{\prime}}))$ represents the actual quantity of interest.
+Although providing meaningful prior hyper-parameters leads to adequate uncertainty quantification,  we shall, above all,  take those quantities equal for all groups.  This choice would ensure an unbiased comparison,  which would constitute a valuable alternative to the traditional and somehow limited $t$-tests.
+Indeed,  inference based on hypothesis testing and p-values has been widely called into question over the past decade \citep{wassersteinMovingWorld052019}.  Additionally,  $t$-tests do not provide any insight on effect sizes or uncertainty quantification (in contrast to Bayesian inference as emphasized by \cite{kruschkeBayesianNewStatistics2018}).
+
+The present framework aspires at estimating a posterior distribution for each mean parameter vector $\mub_{\groupi}$, starting from the same prior assumptions in each group.
+The comparison between means of all groups would then only rely on the ability to sample directly from these distributions and compute empirical posteriors for the means' difference.
+As a bonus, this framework remains compatible with multiple imputations strategies previously introduced to handle missing data that frequently arise in applicative contexts (see \Cref{Chap:3}).
+
+
+From the previous hypotheses, we can deduce the likelihood of the model for an i.i.d. sample $\{ \yb_{\groupi,\textcolor{colN}{1}}, \dots, \yb_{\groupi,\sampleN_{\groupi}} \}$: 
+\begin{align*}
+\displaystyle
+	 p(\yb_{\groupi,\textcolor{colN}{1}}, \dots, \yb_{\groupi,\sampleN_{\groupi}} \mid \mub_{\groupi}, \Sigmab_{\groupi}) 
+	 &= \prod_{\samplen = 1}^{\sampleN_{\groupi}} p(\yb_{\groupi,\samplen} \mid \mub_{\groupi}, \Sigmab_{\groupi}) \\
+	 &= \prod_{\samplen = 1}^{\sampleN_{\groupi}} \mathcal{N} \left( \yb_{\groupi,\samplen}; \ \mub_{\groupi}, \Sigmab_{\groupi} \right),
+\end{align*}
+However, as previously pointed out, such datasets often contain missing data and we shall introduce here consistent notation. Assume $\mathcal{H}$ to be the set of all observed data, we additionally define:
+\begin{itemize}
+	\item $\yb_{\groupi}^{(0)} = \{y_{k,\samplen}^{\peptp} \in \mathcal{H}, \ n = 1, \dots N_{\groupi}, \ p = 1, \dots, P\}$, the set of elements that are observed in the $k$-th group,
+	\item $\yb_{\groupi}^{(1)} = \{y_{k,\samplen}^{\peptp} \notin \mathcal{H}, \ n = 1, \dots N_{\groupi}, \ p = 1, \dots, P\}$, the set of elements that are missing the $k$-th group.
+\end{itemize}
+Moreover, as we remain in the context of multiple imputation, $\{ \tilde{\yb}_{\groupi}^{(1),\textcolor{colD}{1}}, \dots, \tilde{\yb}_{\groupi}^{(1),\drawD}\}$ can be defined as the set of $\drawD$ draws of an imputation process applied on missing data in the $\groupi$-th group.
+In such context, a closed-form approximation for the multiple-imputed posterior distribution of $\mub_{\groupi}$ can be derived for each group as stated in \Cref{prop:ch5:multi}.
+
+\begin{proposition}
+\label{prop:ch5:multi}
+For all $\groupi = 1, \dots, \groupI$, the posterior distribution of $\mub_{\groupi}$ can be approximated by a mixture of multiple-imputed multivariate $t$-distributions, such as:
+\begin{align*}
+	p(\mub_{\groupi} \mid \yb_{\groupi}^{(0)}) \simeq \dfrac{1}{\drawD} \sum\limits_{\drawd = 1}^{\drawD} T_{\nu_{\groupi}}\left( \mub; \tilde{\mub}_{\groupi}^{(\drawd)},  \tilde{\Sigmab}_{\groupi}^{(\drawd)} \right)
+\end{align*}
+with: 
+\begin{itemize}
+	\item $\nu_{\groupi} = \nu_0 + \sampleN_{\groupi} - \peptP + 1$,
+	\item $\tilde{\mub}_{\groupi}^{(\drawd)} = \dfrac{\lambda_0 \mub_0 + \sampleN_{\groupi} \bar{\yb}_{\groupi}^{(\drawd)} }{\lambda_0 + \sampleN_{\groupi}}$ ,
+	\item $ \tilde{\Sigmab}_{\groupi}^{(\drawd)} = \dfrac{\Sigmab_0 + \sum\limits_{\samplen = 1}^{\sampleN_{\groupi}} (\tilde{\yb}_{\groupi,\samplen}^{(\drawd)} - \bar{\yb}_{\groupi}^{(\drawd)})(\tilde{\yb}_{\groupi,\samplen}^{(\drawd)} - \bar{\yb}_{\groupi}^{(\drawd)})^{\intercal} + \dfrac{\lambda_0 \sampleN_{\groupi}}{(\lambda_0 + \sampleN_{\groupi})} (\bar{\yb}_{\groupi}^{(\drawd)} - \mub_0)(\bar{\yb}_{\groupi}^{(\drawd)} - \mub_0)^{\intercal}}{(\nu_0 + \sampleN_{\groupi} - \peptP + 1)( \lambda_0 + \sampleN_{\groupi})}$,
+\end{itemize}
+where we introduced the shorthand $\tilde{\yb}_{\groupi,\samplen}^{(\drawd)} = \begin{bmatrix}
+\yb_{\groupi,\samplen}^{(0)} \\
+\tilde{\yb}_{\groupi,\samplen}^{(1),\drawd}
+\end{bmatrix}$ to represent the $\drawd$-th imputed vector of observed data, and the corresponding average vector $\bar{\yb}_{\groupi}^{(d)} =  \dfrac{1}{\sampleN_{\groupi}} \sum\limits_{\samplen = 1}^{\sampleN_{\groupi}} \tilde{\yb}_{\groupi,\samplen}^{(\drawd)}$.
+\end{proposition}
+This analytical formulation is particularly convenient for our purpose and, as we shall see in the proof below,  merely comes from imputation. 
+\begin{proof}
+	For the sake of clarity, let us omit the k groups here and first consider a general case with $\yb_{\groupi} = \yb \in \mathbb{R}^{\peptP}$. Moreover, let us focus on only one imputed dataset, and maintain the notation $\tilde{\yb}_1^{(\drawd)}, \dots, \tilde{\yb}_{\sampleN}^{(\drawd)} = \yb_1, \dots, \yb_{\sampleN}$ for convenience. From the hypotheses of the model, we can derive $\mathcal{L}$, the posterior $\log$-PDF over $\left(\mub, \Sigmab \right)$, following the same idea as for the univariate case presented \Cref{sec:ch5:model_uni}:
+	
+\begin{align*}
+\displaystyle
+\mathcal{L}
+&= \log p(\mub, \Sigmab \mid \yb_1, \dots, \yb_{\sampleN}) \\
+&= \log \underbrace{p(\yb_1, \dots, \yb_{\sampleN} \mid \mub, \Sigmab)}_{\mathcal{N}(\mub,  \Sigmab)} + \log \underbrace{p(\mub, \Sigmab)}_{\mathcal{NW}^{-1}(\mub_0, \lambda_0,  \Sigmab_0, \nu_0)} + C_1 \\
+&= - \frac{{\sampleN}}{2} \log \vert \Sigmab \vert - \frac{1}{2} \left(\sum_{\samplen = 1}^{{\sampleN}} (\yb_{\samplen} - \mub)^{\intercal} \Sigmab^{-1} (\yb_{\samplen} - \mub)  \right)\\
+& \hspace{0.5cm}  - \frac{\nu_0 + \peptP + 2}{2} \log \vert \Sigmab \vert - \frac{1}{2} \left( \tr{\Sigmab_0 \Sigmab^{-1}} - \dfrac{\lambda_0}{2} (\mub - \mub_0)^{\intercal} \Sigmab^{-1}(\mub - \mub_0) \right) + C_2 \\
+&= -\frac{1}{2} \Bigg[ \left( \nu_0 + \peptP + 2 + \sampleN \right)\log \vert \Sigmab \vert + \tr{\Sigmab_0 \Sigmab^{-1}}  \\
+& \hspace{0.5cm} +  \sum_{\samplen = 1}^{\sampleN} \tr{(\yb_{\samplen} - \mub)^\mathrm{T} \Sigmab^{-1} (\yb_{\samplen} - \mub) } + \tr{\lambda_0 (\mub - \mub_0)^{\intercal}\Sigmab^{-1}(\mub - \mub_0)} \Bigg] + C_2 \\
+&= -\frac{1}{2} \Bigg[ \left( \nu_0 + \peptP + 2 + N \right) \log \vert \Sigmab \vert + \textrm{tr} \Bigg( \Sigmab^{-1} \Big\{ \Sigmab_0 + \lambda_0 (\mub - \mub_0)(\mub - \mub_0)^{\intercal}   \\
+& \hspace{0.5cm} + \underbrace{ \sampleN (\bar{\yb} - \mub)(\bar{\yb} - \mub)^{\intercal} +  \sum_{\samplen = 1}^{\sampleN} (\yb_{\samplen} - \bar{\yb})(\yb_{\samplen} - \bar{\yb})^{\intercal}}_{\text{Lemma 1}} \Big\} \Bigg) \Bigg] + C_2 \\
+&= -\frac{1}{2} \Bigg[ \left( \nu_0 + P + 2 + \sampleN \right) \log \vert \Sigmab \vert + \textrm{tr} \Bigg( \Sigmab^{-1} \Big\{ \Sigmab_0 +  \sum_{\samplen = 1}^{\sampleN} (\yb_{\samplen} - \bar{\yb})(\yb_{\samplen} - \bar{\yb})^{\intercal}  \\
+& \hspace{0.5cm} + (\sampleN + \lambda_0) \mub \mub^{\intercal} - \mub \left( \sampleN \bar{\yb}^{\intercal} + \lambda_0 \mub_0^{\intercal} \right)  - (\lambda_0 \mub_0 + \sampleN \bar{\yb}) \mub^{\intercal} + \lambda_0 \mub_0\mub_0^{\intercal} + \sampleN \bar{\yb}\bar{\yb}^{\intercal} \Big\} \Bigg) \Bigg] + C_2 \\
+&= -\frac{1}{2} \Bigg[ \left( \nu_0 + \peptP + 2 + \sampleN \right) \log \vert \Sigmab \vert  \\
+& \hspace{0.5cm} + \textrm{tr} \Bigg( \Sigmab^{-1} \Big\{ \Sigmab_0 +  \sum_{\samplen = 1}^{\sampleN} (\yb_{\samplen} - \bar{\yb})(\yb_{\samplen} - \bar{\yb})^{\intercal}  +  \dfrac{\sampleN \lambda_0}{\sampleN + \lambda_0} (\bar{\yb} - \mub_0)(\bar{\yb} - \mub_0)^{\intercal} \\
+& \hspace{0.5cm} + \left( \sampleN + \lambda_0 \right) \left( \mub - \dfrac{\sampleN \bar{\yb} + \lambda_0 \mub_0}{\sampleN + \lambda_0} \right)\left( \mub - \dfrac{N \bar{\yb} + \lambda_0 \mub_0}{\sampleN + \lambda_0} \right)^{\intercal} \Big\} \Bigg) \Bigg] + C_2 \\
+&= -\frac{1}{2} \Bigg[ \left( \nu_{\sampleN} + \peptP + 2 \right) \log \vert \Sigmab \vert + \tr{ \Sigmab^{-1} \Sigmab_{\sampleN}} + \lambda_{\sampleN} \left( \mub - \mub_{\sampleN}\right)^{\intercal} \Sigmab^{-1} \left( \mub - \mub_{\sampleN}\right) \Bigg] + C_2.
+\end{align*}
+By identification, we recognise the log-PDF that characterises the Gaussian-inverse-Wishart distribution $\mathcal{NIW}^{-1}(\mub_{\sampleN},\lambda_{\sampleN},\Sigmab_{\sampleN}, \nu_{\sampleN})$ with:
+\begin{itemize}
+	\item $\mub_{\sampleN} = \dfrac{\sampleN \bar{\yb} + \lambda_0 \mub_0}{\sampleN + \lambda_0}$,
+	\item $\lambda_{\sampleN} = \lambda_0 + \sampleN$,
+	\item $\Sigmab_{\sampleN} = \Sigmab_0 + \sum\limits_{\samplen = 1}^{\sampleN}(\yb_{\sampleN} - \bar{\yb})(\yb_{\sampleN} - \bar{\yb})^{\intercal} + \dfrac{\lambda_0 \sampleN}{(\lambda_0 + \sampleN)} (\bar{\yb} - \mub_0)(\bar{\yb} - \mub_0)^{\intercal} $,
+	\item $\nu_{\sampleN} = \nu_0 + \sampleN$.
+\end{itemize}
+
+Once more, we can integrate over $\Sigmab$ to compute the mean's marginal posterior distribution by identifying the PDF of the inverse-Wishart distribution $\mathcal{W}^{-1}\Big( \Sigmab_{\sampleN} +  \lambda_{\sampleN} \left( \mub - \mub_{\sampleN} \right) \left( \mub - \mub_{\sampleN} \right)^{\intercal}, \\ \nu_{\sampleN} + 1 \Big)$ and by reorganising the terms:
+\begin{align*}
+\displaystyle
+	p(\mub \mid \yb) 
+	&= \int p(\mub, \Sigmab \mid \yb) \dif \Sigmab \\
+	&= \frac{\lambda_{\sampleN}^{\frac{\peptP}{2}}|\boldsymbol{\Sigma_{\sampleN}}|^{\frac{\nu_{\sampleN}}{2}}}{(2 \pi)^{\frac{\peptP}{2}} 2^{\frac{\peptP \nu_{\sampleN}}{2}} \Gamma_{\peptP}\left(\frac{\nu_{\sampleN}}{2}\right)}  \\ 
+	& \hspace{0.5cm} \times \int \vert \boldsymbol{\Sigma} \vert^{-\frac{\nu_{\sampleN}+\peptP+2}{2}} \exp \left(- \dfrac{1}{2} \left( \tr{\Sigmab_{\sampleN} \Sigmab^{-1}} - \dfrac{\lambda_{\sampleN} }{2} \left( \mub - \mub_{\sampleN}\right)^{\intercal} \Sigmab^{-1} \left( \mub - \mub_{\sampleN}\right) \right) \right) \dif \Sigmab \\ 
+	&= \frac{\lambda_{\sampleN}^{\frac{\peptP}{2}}|\boldsymbol{\Sigma_{\sampleN}}|^{\frac{\nu_{\sampleN}}{2}}}{(2 \pi)^{\frac{\peptP}{2}} 2^{\frac{\peptP \nu_{\sampleN}}{2}} \Gamma_{\peptP}\left(\frac{\nu_{\sampleN} }{2}\right)} \times \frac{2^{ \frac{\peptP (\nu_{\sampleN} + 1)}{2}} \Gamma_{\peptP}\left(\frac{\nu_{\sampleN} + 1}{2}\right)}{ \vert \Sigmab_{\sampleN} +  \lambda_{\sampleN} \left( \mub - \mub_{\sampleN} \right) \left( \mub - \mub_{\sampleN} \right)^{\intercal} \vert^{\frac{\nu_{\sampleN} + 1}{2}}} \times 1\\ 
+	&= \dfrac{ \pi^{\peptp(\peptp-1) / 4} \prod\limits_{\peptp = 0}^{\peptP-1} \Gamma \left(\frac{\nu_{\sampleN} + 1 - \peptp}{2}\right)}{ \pi^{\peptP(\peptP-1) / 4} \prod\limits_{\peptp = 1}^{\peptP} \Gamma \left(\frac{\nu_{\sampleN} + 1 - \peptp}{2}\right)} \times \dfrac{\lambda_{\sampleN}^{\frac{P}{2}}  }{\pi^{\frac{P}{2}} } \\
+	& \hspace{0.5cm} \times \underbrace{\dfrac{ \vert\Sigmab_{\sampleN} \vert^{\frac{\nu_{\sampleN}}{2}}}{ \vert \Sigmab_{\sampleN} \vert^{\frac{\nu_{\sampleN} + 1}{2}}} \times \left( 1 + \lambda_{\sampleN} \left( \mub - \mub_{\sampleN} \right)^{\intercal} \Sigmab_{\sampleN}^{-1} \left( \mub - \mub_{\sampleN} \right) \right)^{- \frac{\nu_{\sampleN} + 1}{2}} }_{\text{Matrix determinant lemma}} \\ 
+	&= \dfrac{ \Gamma \left(\frac{\nu_{\sampleN} + 1}{2}\right)}{\Gamma \left(\frac{\nu_{\sampleN} + 1 - \peptP}{2}\right)} \times \dfrac{ \left[\lambda_{\sampleN} (\nu_{\sampleN} - \peptP + 1)\right]^{\frac{P}{2}}  }{\left[\pi(\nu_{\sampleN} - \peptP + 1)\right]^{\frac{P}{2}} \vert \Sigmab_{\sampleN} \vert^{\frac{1}{2}} } \\
+	&\hspace{0.5cm} \times \left( 1 + \dfrac{\lambda_{\sampleN} (\nu_{\sampleN} - \peptP + 1)}{(\nu_{\sampleN} - \peptP + 1)} \left( \mub - \mub_{\sampleN} \right)^{\intercal} \Sigmab_{\sampleN}^{-1} \left( \mub - \mub_{\sampleN} \right) \right)^{- \frac{\nu_{\sampleN} + 1}{2}} \\ 
+	&= \dfrac{\Gamma \left(\frac{(\nu_{\sampleN} - \peptP + 1) + \peptP}{2}\right)}{\Gamma\left(\frac{\nu_{\sampleN} - \peptP + 1}{2}\right) \left[\pi(\nu_{\sampleN} - \peptP + 1)\right]^{\frac{P}{2}} \vert \dfrac{\Sigmab_{\sampleN} }{\lambda_{\sampleN} (\nu_{\sampleN} - \peptP + 1)} \vert^{\frac{1}{2}}} \\ 
+	& \hspace{0.5cm}  \times \left( 1 + \dfrac{1}{\nu_{\sampleN} - \peptP + 1} \left( \mub - \mub_{\sampleN} \right)^{\intercal} \left( \dfrac{ \Sigmab_{\sampleN}}{\lambda_{\sampleN} (\nu_{\sampleN} - \peptP + 1)} \right)^{-1} \left( \mub - \mub_{\sampleN} \right) \right)^{- \frac{(\nu_{\sampleN} - \peptP + 1) + \peptP}{2}}.
+\end{align*}
+The above expression corresponds to the PDF of a multivariate $t$-distribution $\mathcal{T}_{\nu}\left(\mub_{\sampleN}, \hat{\Sigmab} \right)$, with:
+\begin{itemize}
+	\item $\nu = \nu_{\sampleN}  - \peptP + 1$,
+	\item $\hat{\Sigmab} = \dfrac{\Sigmab_{\sampleN}}{ \lambda_{\sampleN} (\nu_{\sampleN} - \peptP + 1) }$.
+\end{itemize}
+
+Therefore, we demonstrated that for each group and imputed dataset, the complete-data posterior over $\mub_{\groupi}$ happens to be a multivariate $t$-distribution. 
+Thus, following Rubin's rules for multiple imputation (see \Cref{eq:1-2-1:RubinApprox0} in \Cref{sec:1-2:MI}), we can propose an approximation to the true posterior distribution (that is only conditioned over observed values):
+\begin{align*}
+	p\left( \mub_{\groupi} \mid \yb_{\groupi}^{(0)} \right) 
+	&= \int p\left( \mub_{\groupi} \mid \yb_{\groupi}^{(0)}, \yb_{\groupi}^{(1)}\right) p\left( \yb_{\groupi}^{(1)} \mid \yb_{\groupi}^{(0)} \right) \dif \yb_{\groupi}^{(1)}  \\
+	& \simeq \dfrac{1}{\peptP} \sum\limits_{\peptp = 1}^{\peptP}  p \left( \mub_{\groupi} \mid \yb_{\groupi}^{(0)}, \tilde{\yb}_{\groupi}^{(1), \drawd} \right)
+\end{align*}
+Leading to the desired results when evaluating the previously derived posterior distribution on each multiple-imputed dataset.
+\end{proof} 
+Thanks to \Cref{prop:ch5:multi}, we have an explicit formula for approximating, using multiple imputed datasets, the posterior distribution of the mean vector for each group. 
+Although such linear combination of multivariate $t$-distributions is not a known specific distribution in itself, it is now straightforward to generate realisations of samples of the posterior by simply drawing from the $\drawD$ multivariate $t$-distributions, each being specific to an imputed dataset, and then compute the mean of the $\drawD$ vectors.
+Therefore, the empirical distribution resulting from a high number of samples generated by this procedure would be easy to visualise and manage for comparison purpose. 
+Generating the empirical distribution of the mean's difference between two groups $\groupi$ and $\groupi^{\prime}$ then comes directly, by computing the difference between each couple of samples drawn from both posterior distributions $p(\mub_{\groupi} \mid \yb_{\groupi}^{(0)})$ and $p(\mub_{\groupi}^{\prime} \mid \yb_{k^{\prime}}^{(0)})$.
+In Bayesian statistics, relying on empirical distributions drawn from the posterior is common practice in the context of Markov chain Monte Carlo (MCMC) algorithms, but often comes at a high computational cost. 
+In our framework, we managed to maintain the best of both worlds since deriving analytical distributions from model hypotheses offers the benefits of probabilistic inference with adequate uncertainty quantification, while remaining tractable and not relying on MCMC procedures.
+The computational cost of the method thus roughly remains as low as frequentist counterparts since merely a few updating calculus and drawing from $t$-distributions are needed.
+
+
+As usual when it comes to compare the mean between two groups, we still need to assess if the posterior distribution of the difference appear, in a sense, to be sufficiently away from zero. 
+This practical inference choice is not specific to our context and remains highly dependent on the context of the study. 
+%\todo{However, in proteomics, it would make sense to blablabla.}
+Moreover, as the present model is multi-dimensional, we may also raise the question of the metric used to compute the difference between vectors. 
+In a sense, our posterior distribution of the mean's differences offers an elegant solution to the traditional problem of multiple testing often encountered in applied science and allows tailored definitions of what could be called a \emph{meaningful} result (\emph{significant} does not appear anymore as an appropriate term in this more general context).
+For example, displaying the distribution of the squared difference would penalise large differences in elements of the mean vector whereas absolute difference would give a more balanced conception of the average divergence from one group to the other. 
+Clearly, as any marginal of a multivariate $t$-distribution remains a (multivariate) $t$-distribution, it is also straightforward to compare specific elements of the mean vectors merely by restraining to the appropriate dimension. 
+%In particular, comparing two groups in the univariate case would simply be a particular case of \Cref{prop:ch5:multi} with $\peptP = 1$.
+Recalling our proteomics context, this means that we could still compare mean intensity of peptides between groups one peptide at a time, or choosing to compare all peptides at once and thus accounting for possible correlations between peptides in each group.  However, an appropriate manner to account for those correlations could be to subset peptides using their protein groups.
+
+Let us provide in \Cref{alg:ch5:algo} a summary of the whole procedure for comparing mean vectors of two different experimental conditions in terms of posterior distribution. 
+
+\begin{algorithm}[H]
+\caption{Posterior distribution of the vector of mean's difference}
+\label{alg:ch5:algo}
+\begin{algorithmic}
+\STATE Initialise the hyper-posteriors $\mub_0^{\groupi} = \mub_0^{{\groupi}^{\prime}}$, $\lambda_0^{\groupi} = \lambda_0^{{\groupi}^{\prime}}$, $\Sigmab_0^{\groupi} = \Sigmab_0^{{\groupi}^{\prime}}$, $\nu_0^{\groupi} = \nu_0^{{\groupi}^{\prime}}$
+\newline
+\FOR{$ \drawd = 1, \dots, \drawD$}
+\vspace{0.3cm}
+\STATE Compute $\{ \mub_{\sampleN}^{{\groupi},(\drawd)}, \lambda_{\sampleN}^{\groupi}, \Sigmab_{\sampleN}^{{\groupi},(\drawd)}, \nu_{\sampleN}^{\groupi} \}$ and $\{ \mub_{\sampleN}^{{\groupi}^{\prime},(\drawd)}, \lambda_{\sampleN}^{{\groupi}^{\prime}}, \Sigmab_{\sampleN}^{{\groupi}^{\prime},(\drawd)}, \nu_{\sampleN}^{{\groupi}^{\prime}} \}$ from hyper-posteriors and data
+\newline
+\STATE Draw $R$ realisations $\hat{\mub}_{{\groupi}}^{(\drawd)[r]} \sim T_{\nu_{\sampleN}^{\groupi}}\left(\mub_{\sampleN}^{{\groupi},(d)}, \dfrac{\Sigmab_{\sampleN}^{{\groupi},(\drawd)}}{ \lambda_{\sampleN}^{\groupi} \nu_{\sampleN}^{\groupi} } \right)$; $\ \hat{\mub}_{{\groupi}^{\prime}}^{(\drawd)[r]} \sim T_{\nu_{\sampleN}^{{\groupi}^{\prime}}}\left(\mub_{\sampleN}^{{\groupi}^{\prime},(\drawd)}, \dfrac{\Sigmab_{\sampleN}^{{\groupi}^{\prime},(\drawd)}}{ \lambda_{\sampleN}^{{\groupi}^{\prime}} \nu_{\sampleN}^{{\groupi}^{\prime}} } \right)$ 
+\ENDFOR
+\newline
+\FOR{$ r = 1, \dots, R$}
+\vspace{0.3cm}
+\STATE Compute $ \hat{\mub}_{{\groupi}}^{[r]}= \dfrac{1}{D} \sum\limits_{d = 1}^{D} \hat{\mub}_{{\groupi}}^{(d)[s]}$ and  $\hat{\mub}_{{\groupi}^{\prime}}^{[r]} = \dfrac{1}{D} \sum\limits_{d = 1}^{D} \hat{\mub}_{{\groupi}^{\prime}}^{(d)[r]}$ to combine samples 
+\STATE Generate a realisation $\hat{\mub}_{\Delta}^{[r]} = \hat{\mub}_{{\groupi}}^{[r]} - \hat{\mub}_{{\groupi}^{\prime}}^{[r]}$  from the difference's distribution
+\ENDFOR 
+\newline
+\RETURN $\{ \hat{\mub}_{\Delta}^{[1]}, \dots, \hat{\mub}_{\Delta}^{[R]} \}$,  an R-sample drawn from the posterior distribution of the mean's difference
+\end{algorithmic}
+\end{algorithm}
+
+\section{The uncorrelated case: no more multiple testing nor imputation} \label{sec:5:uncorr}
+Let us notice that modelling covariances between all variables as in \Cref{prop:ch5:multi} often constitutes a challenge, which is computationally expensive in high dimensions and not always adapted. 
+However, we detailed in \Cref{sec:ch5:model_uni} results that are classical in Bayesian inference, but somehow not widespread enough in applied science, especially when it comes to comparing means. 
+In particular, we can leverage these results to adapt \Cref{alg:ch5:algo} to the univariate case, for handling the same problem as in \Cref{Chap:3} with a more probabilistic flavour. 
+Indeed, when the absence of correlations between peptides is assumed (\textit{i.e. } $\Sigmab$ being diagonal), the problem reduces to the analysis of $\peptP$ independent inference problems (as $\mub$ is supposed Gaussian) and the posterior distributions can be derived in closed-form, as we recalled in \Cref{eq:ch5:uni_t_dist}.
+Moreover, let us highlight a nice property coming with this relaxing assumption is that (multiple-)imputation is no longer needed in this context. 
+Using the same notation as before and the uncorrelated assumption (and thus the induced independence between analytes for $\peptp \neq {\peptp}^{\prime}$), we can write:
+\begin{align}
+\label{eq:5:factorise}
+	p\left( \mub_{\groupi} \mid \yb_{\groupi}^{(0)} \right) 
+	&=  \int p\left( \mub_{\groupi}, \yb_{\groupi}^{(1)} \mid \yb_{\groupi}^{(0)}\right)  \dif \yb_{\groupi}^{(1)}  \\
+	&=  \int p\left( \mub_{\groupi} \mid \yb_{\groupi}^{(0)}, \yb_{\groupi}^{(1)}\right) p\left( \yb_{\groupi}^{(1)} \mid \yb_{\groupi}^{(0)} \right) \dif \yb_{\groupi}^{(1)}  \\
+	&= \int \prod\limits_{\peptp=1}^{\peptP} \left\{  p \left( \mu_{\groupi}^{\peptp} \mid y_{\groupi}^{p,(0)}, y_{\groupi}^{\peptp,(1)} \right) p\left( y_{\groupi}^{{\peptp},(1)} \mid y_{\groupi}^{{\peptp},(0)} \right) \right\} \dif \yb_{\groupi}^{(1)} \\
+	&= \prod\limits_{{\peptp}=1}^{\peptP} \int \left\{  p \left( \mu_{\groupi}^{\peptp} \mid y_{\groupi}^{{\peptp},(0)}, y_{\groupi}^{{\peptp},(1)} \right) p\left( y_{\groupi}^{{\peptp},(1)} \mid y_{\groupi}^{{\peptp},(0)} \right)\dif y_{\groupi}^{{\peptp},(1)}\right\} \\
+	&= \prod\limits_{{\peptp}=1}^{\peptP} p \left( \mu_{\groupi}^{\peptp} \mid y_{\groupi}^{{\peptp},(0)} \right) \\
+	&= \prod\limits_{{\peptp}=1}^{\peptP} T_{2\alpha_0^{\peptp} + N_{\groupi}^{\peptp}} \left(\mu_{\groupi}^{\peptp}; \ \mu_{k,N}^{\peptp} , \ \hat{\sigma^{\peptp}_{\groupi}}^2 \right),
+\end{align} 
+\noindent with:
+\begin{itemize}
+	\item $\mu_{k,N}^{\peptp} = \dfrac{N_{\groupi}^{\peptp} \bar{y}_{\groupi}^{{\peptp},(0)} + \lambda_0^{\peptp} \mu_0^{\peptp}}{\lambda_0^{\peptp} + N_{\groupi}^{\peptp}}$,
+	\item $\hat{\sigma^{\peptp}_{\groupi}}^2 = \dfrac{\beta_0^p + \dfrac{1}{2} \sum\limits_{n = 1}^{N_{\groupi}^{\peptp}}(y_{k,n}^{{\peptp},(0)} - \bar{y}_{\groupi}^{{\peptp},(0)})^2 + \dfrac{\lambda_0 N_{\groupi}^{\peptp}}{2(\lambda_0^{\peptp} + N_{\groupi}^{\peptp})} (\bar{y}_{\groupi}^{{\peptp},(0)} - \mu_0^{\peptp})^2}{(\alpha_0^{\peptp} + \frac{N_{\groupi}^{\peptp}}{2})( \lambda_0^{\peptp} + N_{\groupi}^{\peptp})}$.
+\end{itemize}
+In this context, it can be noticed that $p\left( \mub_{\groupi} \mid \yb_{\groupi}^{(0)} \right)$ factorises naturally over $\peptp = 1, \dots, \peptP$, and thus only depends upon the data that have actually been observed for each peptide. 
+Indeed, we observe that the integration over the missing data $\yb_{\groupi}^{(1)}$ is straightforward in this framework and neither the Rubin's approximation or even imputation (whether multiple or not) appear necessary.
+The observed data $\yb_{\groupi}^{(0)}$ already bear all the useful information as if each unobserved values could simply be ignored without effect on the posterior distribution. 
+
+Let us emphasise on the fact that this property of factorisation and tractable integration over missing data comes directly from the covariance structure as a diagonal matrix, and thus only constitutes a particular case, though convenient, of the previous model. 
+However, in the context of differential analysis in proteomics, analysing each peptide as an independent problem is a common practice, as seen in \Cref{Chap:3}, and we shall notice that the Bayesian framework tackles this issue in an elegant and somehow simpler way.
+In particular, the classical inference approach based on hypothesis testing performs numerous successive tests for all peptides. 
+Such an approach often leads to the pitfall of multiple testing which needs to be carefully dealt with. 
+Interestingly, we can notice that the above model also avoid multiple testing (as it does not rely on hypothesis testing and the definition of some threshold) while maintaining the convenient interpretations of Bayesian probabilistic inference.
+To conclude, whereas the analytical derivation of posterior distributions with Gaussian-inverse-gamma constitutes a well-known results, our proposition to define such probabilistic mean's comparison procedure provides, under the standard uncorrelated-peptides assumption, an elegant and handy alternative to classical techniques that naturally tackles both the imputation and multiple testing issues. 
+Let us provide in \Cref{alg:ch5:algo_uni} the pseudo-code of the inference procedure in order to highlight differences with the fully-correlated case:
+
+\begin{algorithm}
+\caption{Posterior distribution of the mean's difference}
+\label{alg:ch5:algo_uni}
+\begin{algorithmic}
+\FOR{$ {\peptp} = 1, \dots, {\peptP}$}
+\STATE Initialise the hyper-posteriors $\mu_0^{{\groupi},{\peptp}} = \mu_0^{{\groupi}^{\prime}, {\peptp}}$, $\lambda_0^{{\groupi},{\peptp}} = \lambda_0^{{\groupi}^{\prime}, {\peptp}}$, $\alpha_0^{{\groupi},{\peptp}} = \alpha_0^{{\groupi}^{\prime}, {\peptp}}$, $\beta_0^{{\groupi},{\peptp}} = \beta_0^{{\groupi}^{\prime}, {\peptp}}$
+\newline
+\STATE Compute $\{ \mu_{\sampleN}^{{\groupi},{\peptp}}, \lambda_{\sampleN}^{{\groupi},{\peptp}}, \alpha_{\sampleN}^{{\groupi},{\peptp}}, \beta_{\sampleN}^{{\groupi},{\peptp}} \}$ and $\{ \mu_{\sampleN}^{{\groupi}^{\prime}, {\peptp}}, \lambda_{\sampleN}^{{\groupi}^{\prime}, p}, \alpha_{\sampleN}^{{\groupi}^{\prime}, {\peptp}}, \beta_{\sampleN}^{{\groupi}^{\prime}, {\peptp}} \}$ from hyper-posteriors and data
+\newline
+\STATE Draw $R$ realisations $\hat{\mu}_{{\groupi}}^{{\peptp},[r]} \sim T_{\alpha_{\sampleN}^{{\groupi},{\peptp}}}\left(\mu_{\sampleN}^{{\groupi},{\peptp}}, \dfrac{\beta_{\sampleN}^{{\groupi},{\peptp}}}{ \lambda_{\sampleN}^{{\groupi},{\peptp}} \alpha_{\sampleN}^{{\groupi},{\peptp}}} \right)$, $\hat{\mu}_{{\groupi}^{\prime}}^{{\peptp},[r]} \sim T_{\alpha_{\sampleN}^{{\groupi}^{\prime}, {\peptp}}}\left(\mu_{\sampleN}^{{\groupi}^{\prime}, {\peptp}}, \dfrac{\beta_{\sampleN}^{{\groupi}^{\prime}, \peptp}}{ \lambda_{\sampleN}^{{\groupi}^{\prime}, \peptp} \alpha_{\sampleN}^{{\groupi}^{\prime}, {\peptp}} } \right)$
+\newline
+\FOR{$ r = 1, \dots, R$}
+\STATE Generate a realisation $\hat{\mu}_{\Delta}^{{\peptp},[r]} = \hat{\mu}_{{\groupi}}^{{\peptp},[r]} - \hat{\mu}_{{\groupi}^{\prime}}^{{\peptp},[r]}$ from the difference's distribution
+\ENDFOR 
+\ENDFOR
+\newline
+\RETURN $\{ \hat{\mub}_{\Delta}^{[1]}, \dots, \hat{\mub}_{\Delta}^{[R]} \}$,  an R-sample drawn from the posterior distribution of the mean's difference
+\end{algorithmic}
+\end{algorithm}
+
+\section{Experiments}
+\label{sec:ch5:experiments}
+To illustrate our methodology, we used a real proteomics dataset already introduced in \Cref{Chap:3}, namely the \textit{Arabidopsis thaliana} + UPS dataset, with the Match between Runs algorithm and at least one quantified value in each experimental condition.  Briefly, let us recall that UPS proteins were spiked in increasing amounts into a constant background of \textit{Arabidopsis thaliana} (ARATH) protein lysate.  Hence, UPS proteins are differentially expressed, and ARATH proteins are not.  For illustration purposes,  we arbitrarily chose to focus the examples on the \texttt{P12081ups$\mid$SYHC\_HUMAN\_UPS} and the \texttt{sp$\mid$F4I893$\mid$ILA\_ARATH} proteins. Note that both proteins have nine quantified peptides.  Unless otherwise stated, we took the examples of the \texttt{AALEELVK} UPS peptide and the \texttt{VLPLIIPILSK} ARATH peptide and the following values have been set for the prior hyper-parameters:
+\begin{itemize}
+	\item $\mu_0 = 20,\ \forall p = 1, \dots, P$,
+	\item $\lambda = 1$,
+	\item $\alpha_0 = 1$,
+	\item $\beta_0 = 1$,
+	\item $\Sigmab_0 = I_P$,
+	\item $\nu_0 = 10$.
+\end{itemize}
+These values correspond to the practical insights acquired from our previous studies, while remaining relatively vague in terms of prior variance. 
+As previously stated, it is essential for these values to be identical in all groups for ensuring a fair and unbiased comparison.  
+In the case where more expert information would be accessible, its incorporation would be possible, for instance, through the definition of a more precise prior mean ($\mu_0$) associated with a more confident prior variance (encoded through $\alpha_0$ and $\beta_0$).
+Additionally let us recall that in our real datasets, the constants of the values take the values:
+\begin{itemize}
+	\item $\forall k = 1, \dots, K, \ N_k = 3$ data points, in the absence of missing data,
+	\item $P = 9$ peptides, when using the multivariate model,
+	\item $D = 7$ draws of imputation,
+	\item $R = 10^4$ sample points from the posterior distributions.
+\end{itemize}
+Let us emphasise that, in this context where the number $N_k$ of observed biological samples is extremely low, in particular when data are missing, we should expect a perceptible influence of the prior hyper-parameters, as well as an inherent uncertainty in the posteriors.
+However, this influence has been reduced to the minimum in all the subsequent graphs for the sake of clarity and for assuring a good understanding of the underlying properties of the methodology. 
+The high number $R$ of sample points drawn from the posteriors assures the empirical distribution to be smoothly displayed on the graph, but one should note that sampling is really quick in practice, and this number can be easily increased if necessary.
+
+\subsection{Univariate Bayesian inference for differential analysis}
+First, let us illustrate the univariate framework described in \Cref{sec:5:uncorr}.  In this experience, we compared the intensity means in the lowest (0.05 fmol UPS) and the highest points (10 fmol UPS) of the UPS spike range.  Let us recall that our univariate algorithm does not rely on imputation and should be applied directly on raw data.  For the sake of illustration, the chosen peptides were observed entirely in all three biological samples of both experimental conditions.
+\begin{figure}[ht]
+     \centering
+     \makebox[\textwidth][c]{
+     \begin{subfigure}[b]{0.5\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{ch5_graph1-1.png}
+         \caption{\texttt{AALEELVK} peptide from the \texttt{P12081ups$\mid$SYHC\_HUMAN\_UPS} protein.}
+         \label{fig:5:graph1-1}
+     \end{subfigure}
+     \hfill
+     \begin{subfigure}[b]{0.5\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{ch5_graph1-2.png}
+         \caption[\texttt{VLPLIIPILSK} peptide of the \texttt{sp$\mid$F4I893$\mid$ILA\_ARATH} protein.]{\texttt{VLPLIIPILSK} peptide from the\\ \texttt{sp$\mid$F4I893$\mid$ILA\_ARATH} protein.}
+         \label{fig:5:graph1-2}
+     \end{subfigure}}
+        \caption[Posterior distributions of the difference of means between the 0.05 fmol UPS spike condition ($\mu_1$) and the 10 fmol UPS spike condition ($\mu_7$) and the corresponding boxplots summarising the observed data]{\textbf{Posterior distributions of the difference of means between the 0.05 fmol UPS spike condition ($\mu_1$) and the 10 fmol UPS spike condition ($\mu_7$) and the corresponding boxplots summarising the observed data. } The 95\% credible interval is indicated by the blue central region.}
+        \label{fig:5:graph1}
+\end{figure}
+Resulting from the application of our univariate algorithm,  posterior distributions of the mean difference for both peptides are represented on \Cref{fig:5:graph1}. As the analysis consists in a comparison between conditions, the 0 value has been highlighted on the x-axis for assessing both the direction and the magnitude of the difference. The distance to zero of the distributions indicates whether the peptide is differentially expressed or not. In particular,  \Cref{fig:5:graph1-1} shows the posterior distribution of the means difference for the UPS peptide. Its location, far from zero, indicates a high probability (almost surely in this case) that the mean intensity of this peptide differs between the two considered groups.  Conversely, the posterior distribution of the difference of means for the ARATH peptide (\Cref{fig:5:graph1-2}) suggests that the probability that means differ is low. Those conclusions support the summaries of raw data depicted on the bottom panel of \Cref{fig:5:graph1}.
+Moreover, the posterior distribution provides additional insights on whether a peptide is under-expressed or over-expressed in a condition compared to another. For example, looking back to the UPS peptide, \Cref{fig:5:graph1-1} suggests an over-expression of the \texttt{AALEELVK} peptide in the seventh group (being the condition with the highest amount of UPS spike) compared to the first group (being the condition with the lowest amount of UPS spike), which is consistent with the experimental design.
+Furthermore,  the middle panel merely highlights the fact that the posterior distribution of the difference $\mu_1 - \mu_7$ is the symmetric of $\mu_7 - \mu_1$, thus the sense of the comparison only remains an aesthetic choice.
+
+
+\subsection{The benefit of intra-protein correlation}
+
+One of the main benefits of our methodology is to account for between-peptides correlation, as described in \Cref{sec:ch5:model_multi}.  As the first illustration of such property, we modelled correlations between all quantified peptides derived from the same protein.
+In order to highlight the gains that we may expect from such modelling, we displayed on \Cref{fig:5:graph2} the comparison between a differential analysis using our univariate method or using the multivariate approach.
+\begin{figure}[h]
+ 	\makebox[\textwidth][c]{\includegraphics[width =.9\textwidth]{Chapters/Chap5/ch5_graph2.png}}
+    \caption[Posterior distributions of the mean difference $\mu_5 - \mu_7$ for the \texttt{AALEELVK} peptide from the \texttt{P12081ups$\mid$SYHC\_HUMAN\_UPS} protein using the univariate approach (top) and the multivariate approach (bottom).]{\textbf{Posterior distributions of the mean difference $\mu_5 - \mu_7$ for the \texttt{AALEELVK} peptide from the \texttt{P12081ups$\mid$SYHC\_HUMAN\_UPS} protein using the univariate approach (top) and the multivariate approach (bottom).} The 95\% credible interval is indicated by the blue central region.}
+    \label{fig:5:graph2}
+\end{figure}
+Recall the quantification data from the previous subsection. In this example, we purposefully considered a group of 9 peptides coming from the same protein (\texttt{P12081ups$\mid$SYHC\_HUMAN\_UPS}), which intensities may undoubtedly be correlated to some degree.
+We consider in this section the comparison of intensity means between the fifth point (2.5 fmol UPS - $\mub_5$) and the seventh point  (10 fmol UPS  - $\mub_7$) of the UPS spike range.
+The posterior difference of the mean vector $\mub_5 - \mub_7$ between two conditions has been computed, and the first peptide (\texttt{AALEELVK}) has been extracted for graphical visualisation.
+Meanwhile, the univariate algorithm has also been applied to compute the posterior difference $\mu_5 - \mu_7$, solely on the peptide \texttt{AALEELVK}. 
+The top panel of \Cref{fig:5:graph2} displays the latter approach, while the multivariate case is exhibited on the bottom panel. 
+One should observe clearly that, while the location parameter of the two distributions is close as expected, the multivariate approach takes advantage of the information coming from the correlated peptides to reduce the uncertainty in the posterior estimation. 
+This lower variance provides a tighter range of probable values, enabling a more precise estimation of the effect size and increased confidence in the resulting inference (deciding whether the peptide is differential or not).
+
+
+\subsection{The mirage of imputed data}
+After discussing the advantages and the valuable interpretative properties of our methods, let us mention a pitfall that one should avoid for the inferences to remain valid. 
+In the case of univariate analysis, we pointed out thanks to \Cref{eq:5:factorise} that all the useful information is contained on observed data, and no imputation is needed since we already integrated out all missing data. 
+Imputation does actually not even make sense in one dimension since, by definition, a missing data point is simply equivalent to an unobserved one, and we shall gain more information only by collecting more data. 
+Therefore, one should be really careful when dealing with imputed datasets and keep in mind that imputation somehow \emph{creates} new data points that do not bear any additional information. 
+Thus, there is a risk of artificially decreasing the uncertainty of our estimated posterior distributions simply by considering more data points in the computations than what was genuinely observed. 
+\begin{figure}[ht]
+ 	\makebox[\textwidth][c]{\includegraphics[width =.9\textwidth]{Chapters/Chap5/ch5_graph3-wng.png}}
+    \caption[Posterior distributions of the mean difference $\mu_1 - \mu_4$ for the \texttt{EVQELAQEAAER} peptide from the \texttt{sp$\mid$F4I893$\mid$ILA\_ARATH} protein using the observed dataset (top) and the imputed dataset (bottom)]{\textbf{Posterior distributions of the mean difference $\mu_1 - \mu_4$ for the \texttt{EVQELAQEAAER} peptide from the \texttt{sp$\mid$F4I893$\mid$ILA\_ARATH} protein using the observed dataset (top) and the imputed dataset (bottom).  }The 95\% credible interval is indicated by the blue central region.}
+    \label{fig:5:graph3}
+\end{figure}
+For instance, imagine a dummy example where 10 points are effectively observed, and 1000 remain missing. 
+It would be a massive error and underestimation of the true variance to impute the 1000 missing points (say with the average of the ten observed ones) and use the resulting 1010-dimensional vector for computing the posterior distributions of the mean. 
+Let us mention that such a problem is not specific to our framework and more generally also applies to Rubin's rules. 
+One should keep in mind that those approximations only holds for a reasonable ratio of missing data.
+Otherwise, one may consider adapting the method, for example, by penalising the degree of freedom in the relevant $t$-distributions.
+To illustrate this issue, we displayed on \Cref{fig:5:graph3} an example of our univariate algorithm applied both on the observed dataset (top panel) and the imputed dataset (bottom panel). 
+In this context, we observe a reduced variance for the imputed data. However, this behaviour is just an artefact of the phenomenon mentioned above: the bottom graph is merely not valid, and only raw data should be used in our univariate algorithm to avoid spurious inference results.
+More generally, while imputation is sometimes needed for the methods to work, one should always keep in mind that it always constitutes a bias (although controlled) that should be accounted for with tailored solutions, as this manuscript intends to provide.    
+
+\subsection{Acknowledging the effect size}
+After discussing methodological aspects, let us dive into more biological-related properties displayed on \Cref{fig:5:graph4}.
+\begin{figure}[h]
+ 	\makebox[\textwidth][c]{\includegraphics[width = .9\textwidth]{Chapters/Chap5/ch5_graph4.png}}
+    \caption[Posterior distributions of the mean differences $\mu_1 - \mu_2$, $\mu_1 - \mu_4$ and $\mu_1 - \mu_7$ for the \texttt{AALEELVK} peptide from the \texttt{P12081ups$\mid$SYHC\_HUMAN\_UPS} protein. ]{\textbf{Posterior distributions of the mean differences $\mu_1 - \mu_2$, $\mu_1 - \mu_4$ and $\mu_1 - \mu_7$ for the \texttt{AALEELVK} peptide from the \texttt{P12081ups$\mid$SYHC\_HUMAN\_UPS} protein. }The 95\% credible interval is indicated by the blue central region.}
+    \label{fig:5:graph4}
+\end{figure}
+The three panels describe the increasing differences that can be observed when we compare sequentially the first point (0.05 fmol UPS) of the UPS spike range ($\mu_1$) to the second one (0.25 fmol UPS - $\mu_2$), the fourth one (1.25 fmol UPS - $\mu_4$) and the highest one (25 fmol UPS - $\mu_7$).  The experimental design suggests that the difference in means for a UPS peptide should increase with respect to the amount of UPS proteins that was spiked in the biological sample (see \Cref{Chap:2}).  
+This illustration offers a perspective on how this difference becomes more and more noticeable,  though mitigated by the inherent variability.
+Such an explicit and adequately quantified variance, and the induced uncertainty in the estimation, should help practitioners to make more educated decisions with the appropriate degree of caution. 
+In particular, \Cref{fig:5:graph4} highlights the importance to consider the effect size (increasing here), which is crucial when studying the underlying biological phenomenon. 
+Such a graph may recall us that statistical inference should be more about offering helpful insights to experts of a particular domain, rather than defining automatic and blind decision-making procedures \citep{betenskyPValueRequiresContext2019}.  Moreover, let us point out that current statistical tests used for differential analysis express their results solely as $p$-values. One should keep in mind that, no matter their value, they do not provide any information about the effect size of the phenomenon \citep{sullivanUsingEffectSize2012}. 
+
+\subsection{About protein inference}
+
+To conclude on the practical usage of the proposed multivariate algorithm, let us develop ideas for comparing simultaneously multiple peptides or proteins.
+As highlighted before, accounting for the covariances between peptides tends to reduce the uncertainty on the posterior distribution of a unique peptide.
+However, we only exhibited examples comparing one peptide at a time between two conditions, although in applications, practitioners often need to compare thousands of them simultaneously. 
+From a practical point of view, while possible in theory, we probably want to avoid modelling the correlations between every combination of peptides into a full rank matrix for at least two reasons. \\
+First, it probably does not bear much sense to assume that all peptides in a biological sample interact with no particular structure.
+Secondly, it appears unreasonable to do so from a statistical and practical point of view. 
+Computing and storing a matrix with roughly $10^4$ rows and columns induces a computational and memory burden that would complicate the procedure while potentially leading to unreliable objects if matrices are estimated merely on a few data points, as for our example. 
+However, a more promising approach would consist in deriving a sparse approach by levering the underlying structure of data from a biological perspective. 
+If we reasonably assume, as before, that only peptides from common proteins present non-negligible correlations, it is then straightforward to define a block-diagonal matrix for the complete vector of peptides, which would be far more reasonable to estimate.
+Such an approach would take advantage of both of our algorithms by using the factorisation (as in  \Cref{eq:5:factorise}) over thousands of proteins to sequentially estimate a high number of low dimensional mean vectors. 
+Assuming an example with a thousand proteins containing ten peptides each, the approximate computing and storage requirements would be reduced from a $(10^4)^2 = 10^8$ order of magnitude (due to one high-dimensional matrix) to $10^3 \times 10^2 = 10^5$ (a thousand of small matrices).
+In our applicative context, the strategy of dividing a big problem into independent smaller ones appear beneficial from both the applicative and statistical perspective. 
+
+This being said, the question of the \emph{global} inference, in contrast with a peptide-by-peptide approach, remains pregnant.
+To illustrate this topic, let us provide on \Cref{fig:5:graph5} an example of simultaneous differential analysis for nine peptides from the same protein.
+According to our previous recommendations, we accounted for the correlations through the multivariate algorithm and displayed the results in posterior mean's differences for each peptide from the \texttt{P12081ups$\mid$SYHC\_HUMAN\_UPS} protein at once (\textit{i.e. } $\mub_1 - \mub_7$).
+In this example, eight peptides over nine contained in the protein are clearly differential in the same direction with comparable effect sizes, corroborating our intuition of correlated quantities. 
+However, the situation may become far trickier when distributions lie closer to 0 on the x-axis or if only one peptide presents a clear differential pattern.
+As multiple and heterogeneous situations could be encountered, we do not provide here recommendations for directly dealing with protein-scale inference.
+Once again, the criterium for deciding what should be considered as \emph{different enough} is highly dependent on the context and reasonable hypotheses, and no arbitrary threshold may bear any kind of general relevancy.
+However, we should still point out that our Bayesian framework provides convenient and natural interpretations in terms of a probability for each peptide individually. 
+It is then straightforward to construct probabilistic decision rules and combine them to reach a multivariate inference tool, for instance, by computing an average probability for the means' difference to be below 0 across all peptides. 
+However, one should note that probability rules prevent directly deriving global probabilistic statements without closely looking at dependencies between the single events (for instance, the factorisation in \Cref{eq:5:factorise} holds thanks to the induced independence between peptides).
+Although such an automatic procedure cannot replace the expert analysis, it may still provide a handy tool for extracting the most noteworthy results from a massive number of comparisons, which the practitioner should look at more closely afterwards.
+Therefore, once a maximal risk of the adverse event or a minimum probability of the desired outcome has been defined, one may derive the adequate procedure to reach those properties.
+\begin{figure}[h]
+ 	\makebox[\textwidth][c]{\includegraphics[width = \textwidth]{Chapters/Chap5/ch5_graph5.png}}
+    \caption[Posterior distributions of mean difference $\mu_1 - \mu_7$ for the nine peptides from the \texttt{P12081ups$\mid$SYHC\_HUMAN\_UPS} protein using the multivariate approach.]{\textbf{Posterior distributions of mean difference $\mu_1 - \mu_7$ for the nine peptides from the \texttt{P12081ups$\mid$SYHC\_HUMAN\_UPS} protein using the multivariate approach.} The 95\% credible interval is indicated by the blue central region.}
+    \label{fig:5:graph5}
+\end{figure}
+
+\clearpage
+
+\section{Conclusion and perspectives}
+This chapter presents a Bayesian inference framework to tackle the problem of differential analysis in both univariate and multivariate context, while accounting for possible missing data. We proposed two algorithms, levering classical results from conjugate priors to compute posterior distributions and easily sample the difference of means when comparing  groups of interest.  For handling the recurrent problem of missing data, our multivariate approach takes advantage of the multiple imputations' approximation, while the univariate framework allows us to simply ignore this issue. In addition, this methodology aims at providing information not only on the probability of the means' difference to be null,  but also on the uncertainty quantification as well as the effect sizes,  which are crucial in a biological framework.  
+
+We believe that such probabilistic statements offer valuable inference tools to the practitioners.  In the particular context of differential proteomics, this methodology allows us to account for between-peptides correlations.
+With an adequate decision rule and an appropriate correlation structure,  Bayesian inference could be used in large-scale proteomics experiments, such as label-free global quantification strategies.  Nevertheless,  targeted proteomics experiments could already benefit from this approach, as the set of considered peptides is restricted.  Furthermore, such experiments used in biomarker research could greatly benefit from the quantification of the uncertainty and the assessment of the effect sizes.
+
+Although promising and illustrated on real applicative problems, this work still remains under development and would necessitate a further extensive simulation study for assessing more precisely the properties of the method. Readers could also benefit from more insights about practical usage, by providing intuitions for calibration of the hyper-parameters or precise estimations of the expected running times.  Finally, while we considered the influences at a protein-scale, introducing correlations  according to different biological features would represent an interesting path to explore. 
+
