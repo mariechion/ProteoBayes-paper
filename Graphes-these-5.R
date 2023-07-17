@@ -64,10 +64,10 @@ gg5_8 = plot_dif(res_graph5_ups_multi, c('Point1', 'Point7'), peptide = list_pep
   xlim(c(-7,6)) + ylim(c(0,1.8)) +
   xlab(list_pept[8])
 gg5_9 = plot_dif(res_graph5_ups_multi, c('Point1', 'Point7'), peptide = list_pept[9]) +
-  xlim(c(-7,6)) + ylim(c(0,2)) +
+  xlim(c(-7,6)) + ylim(c(0,1.8)) +
   xlab(list_pept[9])
 
-png('FIGURES/ch5_graph5.png', res = 600, width = 4800, height = 2700, units = "px")
+png('FIGURES/ch5_graph5.png', res = 600, width = 6400, height = 3600, units = "px")
 cowplot::plot_grid(gg5_1, gg5_3, gg5_5, gg5_7, gg5_9,
                    gg5_2, gg5_4, gg5_6, gg5_8, nrow = 3, ncol = 3)
 dev.off()
