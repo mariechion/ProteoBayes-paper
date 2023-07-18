@@ -9,21 +9,47 @@ simu_data = function(
     nb_sample = 5,
     list_mean_diff = c(0, 1, 5, 10),
     list_var = c(1, 1, 1, 1),
-    range_peptide = c(0, 50)){
+    list_cov = c(0.1, 0.1, 0.1, 0.1),
+    range_peptide = c(0, 50), 
+    multivariate = FALSE){
+  
   nb_group = length(list_mean_diff)
-  tibble(
+  
+  
+  db = tibble(
     'Peptide' = rep(paste0('Peptide_', 1:nb_peptide), each= nb_group*nb_sample),
     'Group' = rep(rep(1:nb_group, each = nb_sample),nb_peptide),
     'Sample' = rep(rep( 1:nb_sample, nb_group*nb_peptide))
-    ) %>%
-    dplyr::group_by(Peptide) %>%
-    dplyr::mutate(
-      'Mean' = runif(1, range_peptide[1], range_peptide[2]) +
-        list_mean_diff[Group],
-      'Output' = Mean + rnorm(n(), 0, list_var[Group])
+    ) 
+  if(multivariate){
+    db = db %>%
+      dplyr::group_by(Peptide) %>%
+      dplyr::mutate(
+        'Mean' = runif(1, range_peptide[1], range_peptide[2]) +
+          list_mean_diff[Group]) %>% 
+      arrange(Group) %>% 
+      group_by(Group) %>% 
+      dplyr::mutate(
+        'Output' = Mean + mvtnorm::rmvnorm(
+          nb_sample,
+          rep(0, nb_peptide), 
+          diag(list_var[Group], nb_peptide) +
+            matrix(list_cov[Group], nrow = nb_peptide, ncol = nb_peptide)
+          ) %>% as.vector()
       ) %>%
-    ungroup() %>%
-  return()
+      ungroup() 
+  } else {
+    db = db %>%
+      dplyr::group_by(Peptide) %>%
+      dplyr::mutate(
+        'Mean' = runif(1, range_peptide[1], range_peptide[2]) +
+          list_mean_diff[Group],
+        'Output' = Mean + rnorm(n(), 0, list_var[Group])
+      ) %>%
+      ungroup() 
+  }
+  
+  return(db)
 }
 
 
@@ -31,15 +57,18 @@ eval <- function(
     nb_peptide = 5,
     nb_sample = 5,
     list_mean_diff = c(0, 1, 5, 10),
-    list_var = c(1, 1, 1, 1)){
+    list_var = c(1, 1, 1, 1),
+    list_cov = c(0.1, 0.1, 0.1, 0.1),
+    multivariate = FALSE
+    ){
   
   db = simu_data(
     nb_peptide = nb_peptide,
     nb_sample = nb_peptide,
     list_mean_diff = list_mean_diff,
-    list_var = list_var)
-  
-  t_test = multi_t_test(db)
+    list_var = list_var,
+    list_cov = list_cov,
+    multivariate = multivariate)
   
   res = db %>%
     posterior_mean() %>%
@@ -50,24 +79,49 @@ eval <- function(
                               rename('Group2' = Group),
                             by = c('Peptide', 'Group2')) %>%
     mutate('MSE' = (Mean - mu2)^2,
-                         'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
-                         'Diff_mean' = abs(mu2 - mu)) %>%
-    left_join(t_test, by = c('Peptide', 'Group', 'Group2')) %>% 
-    return()
+           'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
+           'CIC_width' = CI_sup2 - CI_inf2,
+           'Diff_mean' = abs(mu2 - mu)) %>% 
+    
+    mutate('Multivariate' = FALSE)
+  
+  if(multivariate){
+    res = res %>%
+      bind_rows(
+        db %>% multi_posterior_mean() %>% 
+          identify_diff() %>%
+          dplyr::filter(Group == 1) %>%
+          left_join(db %>% select(c('Peptide', 'Group', 'Mean')) %>%
+                      distinct() %>%
+                      rename('Group2' = Group),
+                    by = c('Peptide', 'Group2')) %>%
+          mutate('MSE' = (Mean - mu2)^2,
+                 'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
+                 'Diff_mean' = abs(mu2 - mu),
+                 'CIC_width' = CI_sup2 - CI_inf2,
+                 'Multivariate' = TRUE) 
+      )
+  }
+    
+    res <- res %>% 
+      left_join(multi_t_test(db), by = c('Peptide', 'Group', 'Group2')) %>% 
+      return()
 }
 
 summarise_eval <- function(eval){
   eval %>%
-    group_by(Group, Group2) %>%
-    summarise(across(c(MSE, CIC, Diff_mean, Distinct,
+    group_by(Group, Group2, Multivariate) %>%
+    summarise(across(c(MSE, CIC, Diff_mean,CIC_width, Distinct,
                        p_value, Signif),
-                     .fns = list('Mean' = mean, 'Sd' = sd))) %>%
+                     .fns = list('Mean' = mean, 'Sd' = sd)),
+                     .groups = 'drop') %>%
     mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd)) %>%
     mutate(across(MSE_Mean:Signif_Sd, ~ round(.x, 2))) %>%
-    reframe(Group2,
+    reframe(Group, Group2, Multivariate,
             'RMSE' = paste0(MSE_Mean, ' (', MSE_Sd, ')'),
             'CIC' =  paste0(CIC_Mean, ' (', CIC_Sd, ')'),
             'Diff_mean' =  paste0(Diff_mean_Mean, ' (', Diff_mean_Sd, ')'),
+            'CIC_width' =  paste0(CIC_width_Mean, ' (', CIC_width_Sd, ')'),
             'Distinct' =  paste0(Distinct_Mean*100, ' (', Distinct_Sd*100, ')'),
             'p_value' =  paste0(p_value_Mean, ' (', p_value_Sd, ')')) %>%
     return()
@@ -116,6 +170,44 @@ res2 = eval(
 summarise_eval(res2)
 
 ## Experiment 3: Evaluation of posteriors for different variances 
+
+set.seed(42)
+
+res3_loop = c()
+for(i in 1:100)
+{
+  res3_10 = eval(
+    nb_peptide = 10,
+    nb_sample = 5,
+    list_mean_diff = c(0, 1, 1, 1, 1),
+    list_var = c(1, 1, 1, 10, 10),
+    list_cov = c(0, 0.1, 1 ,1,  10),
+    multivariate = TRUE
+  ) %>% 
+    mutate("Nb_peptide" = 10)
+  
+  res3_100 = eval(
+    nb_peptide = 100,
+    nb_sample = 5,
+    list_mean_diff = c(0, 1, 1, 1, 1),
+    list_var = c(1, 1, 1, 10, 10),
+    list_cov = c(0, 0.1, 1 ,1,  10),
+    multivariate = TRUE
+  ) %>% 
+    mutate("Nb_peptide" = 100)
+  
+  res3_loop = res3_loop %>%
+    bind_rows(res3_10) %>%
+    bind_rows(res3_100)
+}
+
+
+co = res3_loop %>% 
+  group_by(Peptide, Group, Group2, Multivariate, Nb_peptide) %>% 
+  summarise(across(c(MSE, CIC, CIC_width, Diff_mean, Distinct, p_value, Signif), 
+                 .fns = mean),
+            .groups= 'keep') %>% 
+  summarise_eval()
 
 ## Experiment 4: Evaluation of running times
 set.seed(1)
@@ -202,5 +294,3 @@ gg_anim = animate(gg, height = 1800, width = 3200, res = 300)
 
 
 anim_save('anim_ProteoBayes_wide2.gif', gg_anim) 
-  
-
