@@ -1,0 +1,13 @@
+name: ProteoBayes
+title: ProteoBayes
+username:
+account: arthurleroy
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9472944
+bundleId: 7471895
+url: https://arthurleroy.shinyapps.io/ProteoBayes/
+when: 1689704462.65754
+lastSyncTime: 1689704462.65754
+asMultiple: FALSE
+asStatic: FALSE
