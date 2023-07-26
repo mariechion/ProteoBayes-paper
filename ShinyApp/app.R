@@ -13,6 +13,29 @@ ui <- fluidPage(
 
   # Application title
   tabsetPanel(
+    tabPanel('Home',
+             titlePanel('Welcome to ProteoBayes!'),
+             
+             useShinyjs(),
+             
+             fluidRow(column(width = 12), 
+                      p("ProteoBayes is a Bayesian statistical framework for differential
+                        proteomics analysis.", align="justify"),
+                      br(),
+                      p("More details can be found in the preprint. [...] Cite R package. [...]", align="justify"),
+                      h3("Illustration of ProteoBayes with synthetic data", align="justify"),
+                      p("This tab allows you to try ProteoBayes with simulated daatsets [...]", align="justify"),
+                      h3("ProteoBayes on a csv file", align="justify"),
+                      p("This tab allows you to use ProteoBayes with your own data.
+                        Note that the submitted dataset needs to be a csv file with the following format [...]", align="justify"),
+                      h3("Export results as table", align="justify"),
+                      p("This tab allows you to export the results as a table.", align="justify")
+             )
+             
+             
+             ),
+    
+    
     tabPanel('Illustration of ProteoBayes with synthetic data',
              titlePanel('Compute mean differences from a synthetic dataset'),
 
@@ -51,7 +74,7 @@ ui <- fluidPage(
              )
 
     ),
-
+    
     tabPanel('ProteoBayes on a csv file',
              titlePanel('Compute mean differences from a csv file'),
 
