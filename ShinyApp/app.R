@@ -18,18 +18,55 @@ ui <- fluidPage(
              
              useShinyjs(),
              
-             fluidRow(column(width = 12), 
-                      p("ProteoBayes is a Bayesian statistical framework for differential
-                        proteomics analysis.", align="justify"),
-                      br(),
-                      p("More details can be found in the preprint. [...] Cite R package. [...]", align="justify"),
-                      h3("Illustration of ProteoBayes with synthetic data", align="justify"),
-                      p("This tab allows you to try ProteoBayes with simulated daatsets [...]", align="justify"),
-                      h3("ProteoBayes on a csv file", align="justify"),
-                      p("This tab allows you to use ProteoBayes with your own data.
-                        Note that the submitted dataset needs to be a csv file with the following format [...]", align="justify"),
-                      h3("Export results as table", align="justify"),
-                      p("This tab allows you to export the results as a table.", align="justify")
+             fluidPage(column(width = 12), 
+                      p("ProteoBayes is a Bayesian statistical framework for
+                        differential proteomics analysis.",
+                        align="justify", 
+                        style = "color:black"),
+                      p("More details can be found in this",
+                        tags$a(href="https://arxiv.org/abs/2307.08975", "preprint."),
+                        align="justify", 
+                        style = "color:black"),
+                      p("  The present Web-app is a code-free implementation of the
+                        ProteoBayes R package, available on the CRAN and on",
+                        tags$a(href="https://github.com/mariechion/ProteoBayes", "GitHub"),
+                        align="justify", 
+                        style = "color:black"),
+                      p("A",
+                        tags$a(href="https://mariechion.github.io/ProteoBayes/",
+                               "documentation website"),
+                        "is also provided to provides help and examples of its usage.",
+                        align="justify",
+                        style = "color:black"),
+                      h3("Illustration of ProteoBayes with synthetic data",
+                         align="justify",
+                         style = "color:black"),
+                      p("This tab allows you to try ProteoBayes with synthetic 
+                        datasets [...]",
+                        align="justify",
+                        style = "color:black"),
+                      h3("ProteoBayes on a csv file",
+                         align="justify",
+                         style = "color:black"),
+                      p("This tab allows you to use ProteoBayes with your own
+                        data. Note that the submited dataset needs to be a csv
+                        file with the following format: It should be a dataframe
+                        with 4 mandatory columns 'Peptide', 'Group', 'Sample' and
+                        'Output'.",
+                        align="justify",
+                        style = "color:black"),
+                      h3("Export results as table", 
+                         align="justify",
+                         style = "color:black"),
+                      p("This tab allows you to export the results as a table.
+                        Those results contain the comparison across all groups 
+                        of their posterior means and 95% credible intervals 
+                        computed for each peptide. A additional 'Distinct' column
+                        indicates whether the groups are considered different or not
+                        (this criterion is verified if credible intervals do not
+                        overlap)." ,
+                        align="justify",
+                        style = "color:black")
              )
              
              
