@@ -20,16 +20,20 @@ ui <- fluidPage(
              
              fluidPage(column(width = 12), 
                       p("ProteoBayes is a Bayesian statistical framework for
-                        differential proteomics analysis.",
+                        differential proteomics analysis. It relies on mass 
+                        spectrometry-based intensity measurements to be 
+                        compared between biological conditions.",
                         align="justify", 
                         style = "color:black"),
-                      p("More details can be found in this",
-                        tags$a(href="https://arxiv.org/abs/2307.08975", "preprint."),
+                      p("More details can be found in the preprint by", 
+                        tags$a("Chion & Leroy (2023).", href="https://arxiv.org/abs/2307.08975"),
                         align="justify", 
                         style = "color:black"),
-                      p("  The present Web-app is a code-free implementation of the
-                        ProteoBayes R package, available on the CRAN and on",
-                        tags$a(href="https://github.com/mariechion/ProteoBayes", "GitHub"),
+                      p("The present Web-app is a code-free implementation of the
+                        ProteoBayes R package, available on the",
+                        tags$a("CRAN.", href="https://cran.r-project.org/web/packages/ProteoBayes/index.html"),
+                        "Its development version can be found on",
+                        tags$a(href="https://github.com/mariechion/ProteoBayes", "GitHub."),
                         align="justify", 
                         style = "color:black"),
                       p("A",
@@ -39,25 +43,22 @@ ui <- fluidPage(
                         align="justify",
                         style = "color:black"),
                       h3("Illustration of ProteoBayes with synthetic data",
-                         align="justify",
-                         style = "color:black"),
-                      p("This tab allows you to try ProteoBayes with synthetic 
-                        datasets [...]",
+                         align="justify"),
+                      p("This tab allows you to try ProteoBayes with synthetic (simulated) 
+                        datasets.",
                         align="justify",
                         style = "color:black"),
                       h3("ProteoBayes on a csv file",
-                         align="justify",
-                         style = "color:black"),
+                         align="justify"),
                       p("This tab allows you to use ProteoBayes with your own
-                        data. Note that the submited dataset needs to be a csv
-                        file with the following format: It should be a dataframe
-                        with 4 mandatory columns 'Peptide', 'Group', 'Sample' and
-                        'Output'.",
+                        data. Note that the submitted dataset needs to be a .csv 
+                        file in long format with the following variables (column names):
+                        'Peptide', 'Group', 'Sample' & 'Output' (for intensity values). 
+                        See the previous tab with synthetic data for examples.",
                         align="justify",
                         style = "color:black"),
                       h3("Export results as table", 
-                         align="justify",
-                         style = "color:black"),
+                         align="justify"),
                       p("This tab allows you to export the results as a table.
                         Those results contain the comparison across all groups 
                         of their posterior means and 95% credible intervals 
