@@ -67,7 +67,10 @@ ui <- fluidPage(
                         (this criterion is verified if credible intervals do not
                         overlap)." ,
                         align="justify",
-                        style = "color:black")
+                        style = "color:black"),
+                      br(),
+                      p("Any question? any feedback? Please send them to 
+                        Marie Chion (mc2411{at}cam.ac.uk).")
              )
              
              
