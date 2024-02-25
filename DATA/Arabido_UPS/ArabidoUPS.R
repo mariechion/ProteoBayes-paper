@@ -1,7 +1,8 @@
 # Load libraries
 library(tidyverse)
 library(ProteoBayes)
-#library(DAPAR)
+library(DAPAR)
+library(cp4p)
 library(mi4p)
 library(yardstick)
 
@@ -9,8 +10,7 @@ library(yardstick)
 set.seed(17)
 
 # Load peptide-level data
-peptides <- 
-  read.delim("~/Documents/RESEARCH/ProteoBayes/Real_data/Arabido_UPS/peptides.txt")
+peptides <- read.delim("DATA/Arabido_UPS/peptides.txt")
 
 # Data preprocessing
 db_ARATH <- peptides %>% 
@@ -40,9 +40,14 @@ db_ARATH <- peptides %>%
 #                "Point5" = "2.5fmol", "Point6" = "5fmol", 
 #                "Point7" = "10fmol")
 
+
+
 # ProteoBayes - Univariate setting
 Start_time <- Sys.time()
-res_uni_ARATH <- posterior_mean(db_ARATH)
+res_uni_ARATH <- posterior_mean(data = db_ARATH,
+                                mu_0 = db_ARATH %>% 
+                                  group_by(Group) %>% 
+                                  mutate(mu_0 = mean(Output)) %>% pull(mu_0))
 End_time <- Sys.time()
 duration_uni_ARATH <- End_time - Start_time
 
@@ -84,10 +89,33 @@ res_limma <- mi4p::limmaCompleteTest.mod(qData = as.matrix(qARATH),
 End_time <- Sys.time()
 duration_limma <- End_time - Start_time
 
+res_limma$P_Value %>% rownames_to_column() %>%
+  #as_tibble %>% 
+  mutate(across(starts_with("Point"), 
+         ~ cp4p::adjust.p(p = ., alpha = 0.01)$adjp %>% 
+           select(adjusted.p) %>% pull, .names = "{col}_adj")) %>% head
+
+res_limma_adj <- res_limma$P_Value %>% 
+  rownames_to_column() %>% 
+  as_tibble %>% 
+  mutate(across(starts_with("Point"), 
+                ~ cp4p::adjust.p(p = ., alpha = 0.01)$adjp %>% 
+                  select(adjusted.p) %>% pull))
+res_limma_adj %>% rownames_to_column()
+
+res_limma_FC <- res_limma$logFC %>% 
+  rownames_to_column(var = "Peptide") %>% 
+  gather(key = "Comparison", 
+         value = "log2FC", -Peptide) %>% 
+  separate(col = Comparison, 
+           into = c("Comparison", NA), 
+           sep = "_logFC")
+
 # -- Results -- #
-# ProteoBayes
-db_results <- full_join(y = res_limma$P_Value %>% 
-                          rownames_to_column() %>% 
+
+db_results <- full_join(y = res_limma_adj %>% 
+                        #y = res_limma$P_Value %>% 
+                        #  rownames_to_column() %>% 
                           gather(key = "Comparison", 
                                  value = "pval", -rowname) %>% 
                           separate(col = Comparison, 
@@ -121,14 +149,52 @@ db_results <- full_join(y = res_limma$P_Value %>%
   # Add column to flag differential peptides as in limma
   # and ground truth
   mutate(Limma = if_else(pval < 0.05, true = T, false = F, missing = NA),
-         Truth = if_else(str_detect(Protein, "UPS"), true = T, false = F)) %>%
+         Truth = if_else(str_detect(Protein, "UPS"), true = T, false = F)
+         ) %>%
   # Formatting
   rename(ProteoBayes = Distinct) %>% 
-  select(-pval)  %>% 
+  select(-pval) %>% 
   filter(!(is.na(ProteoBayes) & is.na(Limma))) 
+
+# True_diff = case_when(
+#   # Non diff
+#   !Truth ~ 0,
+#   # Point 1
+#   Truth & Comparison == "Point1_vs_Point2" ~ log2(0.25/0.05),
+#   Truth & Comparison == "Point1_vs_Point3" ~ log2(0.5/0.05),
+#   Truth & Comparison == "Point1_vs_Point4" ~ log2(1.25/0.05),
+#   Truth & Comparison == "Point1_vs_Point5" ~ log2(2.5/0.05),
+#   Truth & Comparison == "Point1_vs_Point6" ~ log2(5/0.05),
+#   Truth & Comparison == "Point1_vs_Point7" ~ log2(10/0.05),
+#   # Point 2
+#   Truth & Comparison == "Point2_vs_Point3" ~ log2(0.5/0.25),
+#   Truth & Comparison == "Point2_vs_Point4" ~ log2(1.25/0.25),
+#   Truth & Comparison == "Point2_vs_Point5" ~ log2(2.5/0.25),
+#   Truth & Comparison == "Point2_vs_Point6" ~ log2(5/0.25),
+#   Truth & Comparison == "Point2_vs_Point7" ~ log2(10/0.25),
+#   # Point 3
+#   Truth & Comparison == "Point3_vs_Point4" ~ log2(1.25/0.5),
+#   Truth & Comparison == "Point3_vs_Point5" ~ log2(2.5/0.5),
+#   Truth & Comparison == "Point3_vs_Point6" ~ log2(5/0.5),
+#   Truth & Comparison == "Point3_vs_Point7" ~ log2(10/0.5),
+#   # Point 4
+#   Truth & Comparison == "Point4_vs_Point5" ~ log2(2.5/1.25),
+#   Truth & Comparison == "Point4_vs_Point6" ~ log2(5/1.25),
+#   Truth & Comparison == "Point4_vs_Point7" ~ log2(10/1.25),
+#   # Point 5
+#   Truth & Comparison == "Point5_vs_Point6" ~ log2(5/2.5),
+#   Truth & Comparison == "Point5_vs_Point7" ~ log2(10/2.5),
+#   # Point 6
+#   Truth & Comparison == "Point5_vs_Point7" ~ log2(10/5)
+# )
+
 
 db_results %>%
   group_by(Comparison, Truth, ProteoBayes, Limma) %>% 
+  summarise(Count = n())
+
+db_results %>% 
+  group_by(ProteoBayes, Limma) %>% 
   summarise(Count = n())
 
 # Perfomance indicators for ProteoBayes
@@ -173,21 +239,36 @@ perf_LM <- db_results %>%
          Accuracy = round((TP + TN)/(TP + TN + FP + FN)*100, digits = 1),
          F1Score = round(2*TP/(2*TP+FP+FN)*100, digits = 1))
 
-db_perf <- bind_rows(ProteoBayes = perf_PB, Limma = perf_LM, .id = "Method") %>% 
+db_perf_adj <- bind_rows(ProteoBayes = perf_PB, Limma = perf_LM, .id = "Method") %>% 
   arrange(Comparison) %>% relocate(Comparison)
 
+db_ARATH %>% 
+  mutate(Is_diff = if_else(str_detect(Protein, "UPS"), true = T, false = F)) %>% 
+  group_by(Group, Is_diff) %>% 
+  summarise(Count = n())
+
 # Save results
-save(res_uni_ARATH, 
-     file = "~/Documents/RESEARCH/ProteoBayes/Real_data/Arabido_UPS/Arabido_UPS_PB_res")
-save(diff_uni_ARATH,
-     file = "~/Documents/RESEARCH/ProteoBayes/Real_data/Arabido_UPS/Arabido_UPS_PB_diff")
-save(res_limma,
-     file = "~/Documents/RESEARCH/ProteoBayes/Real_data/Arabido_UPS/Arabido_UPS_LM_res")
-save(db_perf,
-     file = "~/Documents/RESEARCH/ProteoBayes/Real_data/Arabido_UPS/Arabido_UPS_performance")
+# save(res_uni_ARATH, 
+#      file = "DATA/Arabido_UPS/Arabido_UPS_PB_res")
+# save(diff_uni_ARATH,
+#      file = "DATA/Arabido_UPS/Arabido_UPS_PB_diff")
+# save(res_limma,
+#      file = "DATA/Arabido_UPS/Arabido_UPS_LM_res")
+# save(db_perf,
+#      file = "DATA/Arabido_UPS/Arabido_UPS_performance")
+
+# Load results
+load(file = "DATA/Arabido_UPS/Arabido_UPS_PB_res")
+load(file = "DATA/Arabido_UPS/Arabido_UPS_PB_diff")
+load(file = "DATA/Arabido_UPS/Arabido_UPS_LM_res")
+load(file = "DATA/Arabido_UPS/Arabido_UPS_performance")
 
 
+sample_post <- sample_distrib(res_uni_ARATH)
 
+test_post <- sample_post %>% slice(1:100) %>%  
+  group_by(Peptide) %>% 
+  reframe(pivot_wider(., names_from = Group, values_from = Sample)) %>% rbind
 
 # ----------------------------------------------------------- #
 load(file = "Arabido_UPS_1of3inall_ImpMLE_long")
