@@ -5,6 +5,7 @@ library(DAPAR)
 library(cp4p)
 library(mi4p)
 library(yardstick)
+library(mvtnorm)
 
 # Set random generator
 set.seed(17)
@@ -113,33 +114,214 @@ res_limma_FC <- res_limma$logFC %>%
 
 # -- Results -- #
 
+exp_cond <- tibble(Group = paste("Point", 1:7, sep = ""),
+                   fmol = c(0.05, 0.25, 0.5, 1.25, 2.5, 5, 10)) %>% 
+  expand_grid(Group2 = unique(Group)) %>% 
+  filter(Group != Group2) %>% 
+  left_join(tibble(Group2 = paste("Point", 1:7, sep = ""),
+                   fmol2 = c(0.05, 0.25, 0.5, 1.25, 2.5, 5, 10)), 
+            by = "Group2")
+
+ref_pept <- db_ARATH %>% 
+  arrange(Peptide) %>% 
+  left_join(tibble(Group = paste("Point", 1:7, sep = ""),
+                   fmol = c(0.05, 0.25, 0.5, 1.25, 2.5, 5, 10)),
+            by = "Group") %>% 
+  mutate(Mean = if_else(str_detect(Protein, "UPS"), 
+                          true = Output + log2(10/fmol), 
+                          false = Output)) %>% 
+  group_by(Peptide, Protein) %>% 
+  mutate(Mean = if_else(str_detect(Protein, "UPS"), 
+                        true = mean(Mean, na.rm = T) - log2(10/fmol),
+                        false = mean(Mean, na.rm = T))) %>% 
+  group_by(Peptide, Protein, Group, Mean) %>% 
+  summarise(Avg = mean(Output)) %>% 
+  ungroup %>% 
+  mutate(Diff = Mean - Avg, Case = str_detect(Protein, "UPS"))
+
+ggplot(data = ref_pept, aes(x = Group, y = Diff, fill = Case)) +
+  geom_boxplot()
+
+
+db_results <- diff_uni_ARATH %>%
+  rename(ProteoBayes = Distinct) %>% 
+  filter(Group2 == "Point7") %>% 
+  # Add Protein Column
+  left_join(y = .,
+            x = db_ARATH %>%
+              select(Peptide,Protein) %>%
+              distinct,
+            by = "Peptide") %>% 
+  # Add pval from limma
+  left_join(y = res_limma_adj %>% 
+              pivot_longer(cols = - rowname, 
+                           names_to = "Comparison", 
+                           values_to = "LM_pval") %>% 
+              separate(col = Comparison, 
+                       into = c("Group", NA, "Group2", NA), 
+                       sep = "_"),
+            by = join_by(Peptide == rowname, Group, Group2)) %>% 
+  # Add column to flag differential peptides as in limma
+  # and ground truth
+  mutate(Limma = if_else(LM_pval < 0.05, true = T, false = F, missing = NA),
+         Truth = if_else(str_detect(Protein, "UPS"), true = T, false = F)
+  ) %>% 
+  filter(!(is.na(ProteoBayes) & is.na(Limma))) %>% 
+  # Add FC from limma
+  left_join(y = res_limma$logFC %>% 
+              rownames_to_column(var = "Peptide") %>% 
+              pivot_longer(cols = - Peptide, 
+                           names_to = "Comparison", 
+                           values_to = "LM_log2FC") %>% 
+              separate(col = Comparison, 
+                       into = c("Group", NA, "Group2", NA), 
+                       sep = "_"),
+            by = join_by(Peptide, Group, Group2)) %>% 
+  # Add fmol equivalent to groups
+  left_join(y = exp_cond, by = join_by(Group, Group2)) %>% 
+  # Add FC from ProteoBayes and true FC
+  mutate(PB_log2FC = mu - mu2,
+         True_log2FC = if_else(Truth, true = log2(fmol/fmol2), false = 0)) %>% 
+  # Add ref mean
+  left_join(ref_pept %>% select(Peptide, Protein, Group, Mean), 
+            by = join_by(Peptide, Protein, Group))
+
+db_eval <- db_results %>% 
+  mutate('MSE' = (Mean - mu)^2,
+         'CIC' = ((Mean > CI_inf) & (Mean < CI_sup)) * 100,
+         'Diff_mean' = PB_log2FC,
+         'Diff_LM' = LM_log2FC,
+         'Diff_LM2' = LM_log2FC/log(2),
+         'CIC_width' = CI_sup - CI_inf, 
+         'Distinct' = (ProteoBayes == Truth)*100,
+         'Signif' = (Limma == Truth)*100,
+         "MSE_PBT" = (PB_log2FC - True_log2FC)^2,
+         "MSE_LMT" = (LM_log2FC - True_log2FC)^2) %>% 
+  group_by(Group, Group2, Truth) %>% 
+  summarise(across(c(MSE, CIC, Diff_mean, Diff_LM, Diff_LM2,
+                     LM_pval, CIC_width, Distinct, Signif,
+                     MSE_PBT, MSE_LMT),
+                   .fns = list('Mean' = mean, 'Sd' = sd)),
+            .groups = 'drop') %>% 
+  mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd),
+         'MSE_PBT_Mean' = sqrt(MSE_PBT_Mean), 'MSE_PBT_Sd' = sqrt(MSE_PBT_Sd),
+         'MSE_LMT_Mean' = sqrt(MSE_LMT_Mean), 'MSE_LMT_Sd' = sqrt(MSE_LMT_Sd)) %>%
+  mutate(across(MSE_Mean:MSE_LMT_Sd, ~ round(.x, 2))) %>%
+  reframe(Group, Group2, Truth,
+          'PB_diff_mean' =  paste0(Diff_mean_Mean, ' (', Diff_mean_Sd, ')'),
+          'CIC_width' =  paste0(CIC_width_Mean, ' (', CIC_width_Sd, ')'),
+          'Distinct' = paste0(Distinct_Mean, ' (', Distinct_Sd, ')'),
+          'LM_diff_mean' =  paste0(Diff_LM_Mean, ' (', Diff_LM_Sd, ')'),
+          'LM_diff_mean_2' =  paste0(Diff_LM2_Mean, ' (', Diff_LM2_Sd, ')'),
+          'p_value' =  paste0(LM_pval_Mean, ' (', LM_pval_Sd, ')'),
+          'Signif' = paste0(Signif_Mean, ' (', Signif_Sd, ')'),
+          'RMSE' = paste0(MSE_Mean, ' (', MSE_Sd, ')'),
+          'CIC' =  paste0(CIC_Mean, ' (', CIC_Sd, ')'),
+          'RMSE_PBtoT' = paste0(MSE_PBT_Mean, ' (', MSE_PBT_Sd, ')'),
+          'RMSE_LMtoT' = paste0(MSE_LMT_Mean, ' (', MSE_LMT_Sd, ')')) %>% 
+  left_join(db_results %>% 
+              select(Group, Group2, Truth, True_log2FC) %>% 
+              distinct,
+            join_by(Group, Group2, Truth)) %>% 
+  mutate(True_diff_mean = round(abs(True_log2FC), digits = 2),
+         .after = 'Truth', .keep = "unused")
+
+
+db_results %>% 
+  mutate(PB_Err = PB_log2FC - True_log2FC,
+         LM_Err = LM_log2FC - True_log2FC) %>% 
+  ggplot(., aes(x = Group, y = PB_log2FC - LM_log2FC/log(2), fill = Truth)) +
+  geom_boxplot()
+  #pivot_longer(-Group, names_to = "Method", values_to = "Error") %>% 
+  # ggplot(., aes(x = Group, y = Error, fill = Method)) +
+  # geom_boxplot(outlier.shape = NA) +
+  # scale_y_continuous(limits = c(-2,2))
+
+#db_results2 avec Mean correspondant au groupe 2
+#db_results avec Mean correspondant au groupe 1
+
+db_results2 <- diff_uni_ARATH %>% 
+  rename(ProteoBayes = Distinct) %>% 
+  # Add Protein Column
+  left_join(y = .,
+            x = db_ARATH %>%
+              select(Peptide,Protein) %>%
+              distinct,
+            by = "Peptide") %>% 
+  # Add pval from limma
+  left_join(y = res_limma_adj %>% 
+              pivot_longer(cols = - rowname, 
+                           names_to = "Comparison", 
+                           values_to = "LM_pval") %>% 
+              separate(col = Comparison, 
+                       into = c("Group", NA, "Group2", NA), 
+                       sep = "_"),
+            by = join_by(Peptide == rowname, Group, Group2)) %>% 
+  # Add column to flag differential peptides as in limma
+  # and ground truth
+  mutate(Limma = if_else(LM_pval < 0.05, true = T, false = F, missing = NA),
+         Truth = if_else(str_detect(Protein, "UPS"), true = T, false = F)
+  ) %>% 
+  # Add FC from limma
+  left_join(y = res_limma$logFC %>% 
+              rownames_to_column(var = "Peptide") %>% 
+              pivot_longer(cols = - Peptide, 
+                           names_to = "Comparison", 
+                           values_to = "LM_log2FC") %>% 
+              separate(col = Comparison, 
+                       into = c("Group", NA, "Group2", NA), 
+                       sep = "_"),
+            by = join_by(Peptide, Group, Group2)) %>% 
+  # Add fmol equivalent to groups
+  left_join(y = exp_cond, by = join_by(Group, Group2)) %>% 
+  # Add FC from ProteoBayes and true FC
+  mutate(PB_log2FC = mu - mu2,
+         True_log2FC = if_else(Truth, true = log2(fmol/fmol2), false = 0)) %>% 
+  # Add ref mean
+  left_join(ref_pept, by = join_by(Peptide, Protein, Group2 == Group)) %>% 
+  # Add performance
+  mutate('MSE' = (Mean - mu2)^2,
+         'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
+         'CIC_width' = CI_sup2 - CI_inf2, .keep = "unused", 
+         "PB_MeanDiff" = abs(PB_log2FC - True_log2FC),
+         "LM_MeanDiff" = abs(LM_log2FC - True_log2FC)) %>%
+  group_by(Group, Group2) %>% 
+  summarise(across(c(PB_MeanDiff, LM_MeanDiff, 
+                     MSE, CIC, CIC_width, LM_pval),
+                     .fns = list('Mean' = ~mean(.x, na.rm = T), 
+                                 'Sd' = ~sd(.x, na.rm = T))),
+              .groups = 'drop') %>% 
+  filter(!is.nan(LM_pval_Mean)) %>% 
+  mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd)) %>%
+  mutate(across(-c("Group", "Group2"), ~ round(.x, 2))) %>%
+  reframe(Group, Group2,
+          'PB_MeanDiff'= paste0(PB_MeanDiff_Mean, ' (', PB_MeanDiff_Sd, ')'),
+          'LM_MeanDiff'= paste0(LM_MeanDiff_Mean, ' (', LM_MeanDiff_Sd, ')'),
+          'RMSE' = paste0(MSE_Mean, ' (', MSE_Sd, ')'),
+          'CIC' =  paste0(CIC_Mean, ' (', CIC_Sd, ')'),
+          'CIC_width' =  paste0(CIC_width_Mean, ' (', CIC_width_Sd, ')'),
+          'pval' =  paste0(LM_pval_Mean, ' (', LM_pval_Sd, ')'))
+
+db_results %>% filter(!is.nan(pval)) %>% print(n=Inf)
+    
+db_results2 %>% filter(Group2 == "Point7")
+  
+
+
 db_results <- full_join(y = res_limma_adj %>% 
                         #y = res_limma$P_Value %>% 
                         #  rownames_to_column() %>% 
                           gather(key = "Comparison", 
                                  value = "pval", -rowname) %>% 
                           separate(col = Comparison, 
-                                   into = c("Group1vsGroup2", NA), 
+                                   into = c("Comparison", NA), 
                                    sep = "_pval"),
                         x = diff_uni_ARATH %>% 
-                          select(Peptide, Group, Group2, Distinct) %>%
-                          unite(col = "Group1vsGroup2", c(Group,Group2),
+                          unite(col = "Comparison", c(Group,Group2),
                                 sep = "_vs_"),
-                        by = join_by(Peptide == rowname, Group1vsGroup2)) %>% 
-  rename(Comparison = Group1vsGroup2) %>% 
-  # Keep the 21 comparisons of interest
-  filter(Comparison %in% c("Point1_vs_Point2", "Point1_vs_Point3", 
-                               "Point1_vs_Point4", "Point1_vs_Point5",
-                               "Point1_vs_Point6", "Point1_vs_Point7",
-                               "Point2_vs_Point3", "Point2_vs_Point4", 
-                               "Point2_vs_Point5", "Point2_vs_Point6", 
-                               "Point2_vs_Point7",
-                               "Point3_vs_Point4", "Point3_vs_Point5",
-                               "Point3_vs_Point6", "Point3_vs_Point7",
-                               "Point4_vs_Point5", "Point4_vs_Point6",
-                               "Point4_vs_Point7",
-                               "Point5_vs_Point6", "Point5_vs_Point7",
-                               "Point6_vs_Point7")) %>% 
+                        by = join_by(Peptide == rowname, Comparison)) %>% 
+  # Filter Group2 = Point7
+  filter(Group2 == "Point7") 
   # Add Protein Column
   left_join(y = .,
             x = db_ARATH %>%
@@ -151,42 +333,55 @@ db_results <- full_join(y = res_limma_adj %>%
   mutate(Limma = if_else(pval < 0.05, true = T, false = F, missing = NA),
          Truth = if_else(str_detect(Protein, "UPS"), true = T, false = F)
          ) %>%
+  # Add logFC from limma
+  left_join(x = ., 
+            y = res_limma$logFC %>% 
+              rownames_to_column(var = "Peptide") %>% 
+              gather(key = "Comparison", 
+                     value = "log2FC", -Peptide) %>% 
+              separate(col = Comparison, 
+                       into = c("Comparison", NA), 
+                       sep = "_logFC"),
+            by = c("Peptide", "Comparison")) %>%
+  # Add diff logFC from ProteoBayes and True logFC
+  mutate(PB_diff = mu - mu2, 
+         True_diff = case_when(
+           # Non diff
+           !Truth ~ 0,
+           # Point 1
+           Truth & Comparison == "Point1_vs_Point2" ~ log2(0.25/0.05),
+           Truth & Comparison == "Point1_vs_Point3" ~ log2(0.5/0.05),
+           Truth & Comparison == "Point1_vs_Point4" ~ log2(1.25/0.05),
+           Truth & Comparison == "Point1_vs_Point5" ~ log2(2.5/0.05),
+           Truth & Comparison == "Point1_vs_Point6" ~ log2(5/0.05),
+           Truth & Comparison == "Point1_vs_Point7" ~ log2(10/0.05),
+           # Point 2
+           Truth & Comparison == "Point2_vs_Point3" ~ log2(0.5/0.25),
+           Truth & Comparison == "Point2_vs_Point4" ~ log2(1.25/0.25),
+           Truth & Comparison == "Point2_vs_Point5" ~ log2(2.5/0.25),
+           Truth & Comparison == "Point2_vs_Point6" ~ log2(5/0.25),
+           Truth & Comparison == "Point2_vs_Point7" ~ log2(10/0.25),
+           # Point 3
+           Truth & Comparison == "Point3_vs_Point4" ~ log2(1.25/0.5),
+           Truth & Comparison == "Point3_vs_Point5" ~ log2(2.5/0.5),
+           Truth & Comparison == "Point3_vs_Point6" ~ log2(5/0.5),
+           Truth & Comparison == "Point3_vs_Point7" ~ log2(10/0.5),
+           # Point 4
+           Truth & Comparison == "Point4_vs_Point5" ~ log2(2.5/1.25),
+           Truth & Comparison == "Point4_vs_Point6" ~ log2(5/1.25),
+           Truth & Comparison == "Point4_vs_Point7" ~ log2(10/1.25),
+           # Point 5
+           Truth & Comparison == "Point5_vs_Point6" ~ log2(5/2.5),
+           Truth & Comparison == "Point5_vs_Point7" ~ log2(10/2.5),
+           # Point 6
+           Truth & Comparison == "Point6_vs_Point7" ~ log2(10/5))) %>% 
   # Formatting
   rename(ProteoBayes = Distinct) %>% 
   select(-pval) %>% 
-  filter(!(is.na(ProteoBayes) & is.na(Limma))) 
+  filter(!(is.na(ProteoBayes) & is.na(Limma)))
+  # Add "Bayesian" indicators of performance
 
-# True_diff = case_when(
-#   # Non diff
-#   !Truth ~ 0,
-#   # Point 1
-#   Truth & Comparison == "Point1_vs_Point2" ~ log2(0.25/0.05),
-#   Truth & Comparison == "Point1_vs_Point3" ~ log2(0.5/0.05),
-#   Truth & Comparison == "Point1_vs_Point4" ~ log2(1.25/0.05),
-#   Truth & Comparison == "Point1_vs_Point5" ~ log2(2.5/0.05),
-#   Truth & Comparison == "Point1_vs_Point6" ~ log2(5/0.05),
-#   Truth & Comparison == "Point1_vs_Point7" ~ log2(10/0.05),
-#   # Point 2
-#   Truth & Comparison == "Point2_vs_Point3" ~ log2(0.5/0.25),
-#   Truth & Comparison == "Point2_vs_Point4" ~ log2(1.25/0.25),
-#   Truth & Comparison == "Point2_vs_Point5" ~ log2(2.5/0.25),
-#   Truth & Comparison == "Point2_vs_Point6" ~ log2(5/0.25),
-#   Truth & Comparison == "Point2_vs_Point7" ~ log2(10/0.25),
-#   # Point 3
-#   Truth & Comparison == "Point3_vs_Point4" ~ log2(1.25/0.5),
-#   Truth & Comparison == "Point3_vs_Point5" ~ log2(2.5/0.5),
-#   Truth & Comparison == "Point3_vs_Point6" ~ log2(5/0.5),
-#   Truth & Comparison == "Point3_vs_Point7" ~ log2(10/0.5),
-#   # Point 4
-#   Truth & Comparison == "Point4_vs_Point5" ~ log2(2.5/1.25),
-#   Truth & Comparison == "Point4_vs_Point6" ~ log2(5/1.25),
-#   Truth & Comparison == "Point4_vs_Point7" ~ log2(10/1.25),
-#   # Point 5
-#   Truth & Comparison == "Point5_vs_Point6" ~ log2(5/2.5),
-#   Truth & Comparison == "Point5_vs_Point7" ~ log2(10/2.5),
-#   # Point 6
-#   Truth & Comparison == "Point5_vs_Point7" ~ log2(10/5)
-# )
+
 
 
 db_results %>%
@@ -202,7 +397,8 @@ perf_PB <- db_results %>%
   as.data.frame() %>% 
   mutate(Truth = as.factor(Truth),
          ProteoBayes = as.factor(ProteoBayes)) %>% 
-  group_by(Comparison) %>%
+  group_by(Group,Group2) %>% 
+  #group_by(Comparison) %>%
   group_modify(.f = ~ conf_mat(data = .x,
                                truth = Truth,
                                estimate = ProteoBayes) %>%
