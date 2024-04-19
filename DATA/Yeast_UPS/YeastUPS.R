@@ -39,13 +39,24 @@ db_YST <- peptides %>%
 # ProteoBayes - Univariate setting
 Start_time <- Sys.time()
 res_uni_YST <- posterior_mean(data = db_YST,
-                                mu_0 = db_YST %>% 
+                              mu_0 = db_YST %>% 
                                   group_by(Group) %>% 
-                                  mutate(mu_0 = mean(Output)) %>% pull(mu_0))
+                                  mutate(mu_0 = mean(Output)) %>% pull(mu_0),
+                              lambda_0 = 2)
 End_time <- Sys.time()
 duration_uni_YST <- End_time - Start_time
 
 diff_uni_YST <- identify_diff(res_uni_YST)
+
+## Method of moments to estimate alpha and beta
+# db_YST %>% 
+#   group_by(Group, Peptide) %>% 
+#   summarise(sigma2_inv = 1/(sd(Output)^2)) %>% 
+#   group_by(Group) %>% 
+#   summarise(alpha_0 = mean(sigma2_inv, 
+#                            na.rm = T)^2/(sd(sigma2_inv, na.rm = T)^2),
+#             beta_0 = mean(sigma2_inv, na.rm = T)/(sd(sigma2_inv, na.rm = T)^2))
+  
 
 # Moderated t-test - using DAPAR
 # Note, limma and DAPAR use data in wide format.
@@ -136,7 +147,7 @@ db_results <- diff_uni_YST %>%
               distinct,
             by = "Peptide") %>% 
   # Add pval from limma
-  left_join(y = res_limma_adj %>% 
+  right_join(y = res_limma_adj %>% 
               pivot_longer(cols = - rowname, 
                            names_to = "Comparison", 
                            values_to = "LM_pval") %>% 
