@@ -69,7 +69,7 @@ sample_prior = function(nb_sample, alpha, beta, lambda, param, seq_param)
 }
 
 
-text_param = 'beta'
+text_param = 'lambda'
 db = sample_prior(nb_sample, alpha, beta, lambda, text_param, seq(0.1, 10, 1))
 
 
@@ -78,12 +78,14 @@ gif = ggplot(db) +
   geom_text(aes(x= -10, y= 0.3,
                 label=paste("Value of",text_param , ": ", Param)), 
             hjust=0)+
-  geom_vline(aes(xintercept = 0, col = "black")) +
+  geom_vline(aes(xintercept = 0), col = "black") +
   theme_classic() + xlim(c(-10, 10)) + 
   transition_states(Param,
                     transition_length = 2,
                     state_length = 1)
 
+anim_save('Priors_study/gif_lambda.gif', gif, height = 5, width = 8, 
+          units = 'in', res = 300)
 
 
  
