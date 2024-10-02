@@ -1,4 +1,4 @@
-# Load libraries
+# -- LIBRAIRIES -- # 
 library(tidyverse)
 library(ProteoBayes)
 library(DAPAR)
@@ -7,11 +7,278 @@ library(mi4p)
 library(yardstick)
 library(mvtnorm)
 
+# -- FUNCTIONS -- #
+PB_preprocess <- function(data, nb_group, max_NA, dapar = F){
+  ## Data preprocessing
+  db <- data %>% 
+    ## Select columns of interest
+    select(Sequence, Leading.razor.protein, starts_with("Intensity.")) %>% 
+    ## Replace 0 intensity values by NA
+    mutate(across(starts_with("Intensity."), ~ if_else(.x == 0, 
+                                                       true = NA, 
+                                                       false = .x))) %>% 
+    ## Reshape data in long format
+    gather(key = "Condition", value = "Intensity", 
+           -c(Sequence, Leading.razor.protein)) %>% 
+    ## Transform the key into Group and Sample
+    separate(col = Condition, into = c("Group","Sample"), sep = "_") %>% 
+    mutate(Group = str_replace(Group, "Intensity.", "")) %>% 
+    ## Rename columns to match ProteoBayes requirements
+    rename(Peptide = Sequence, 
+           Protein = Leading.razor.protein,
+           Output = Intensity) %>%
+    ## Remove reverse and contaminant proteins, remove iRT. 
+    filter(!str_detect(Protein, "CON") & !str_detect(Protein, "REV") &
+             !str_detect(Protein, "iRT"))
+  
+  ## Get quantified peptides: 
+  ## *max_NA* missing values in each of the *nb_group* groups.
+  qtfd_pept <- db %>% 
+    group_by(Peptide, Group) %>% 
+    summarise(Count_NA = sum(is.na(Output))) %>% 
+    mutate(Is_Qtfd = Count_NA <= max_NA) %>%  
+    group_by(Peptide) %>% 
+    summarise(Qtfd = sum(Is_Qtfd)) %>% 
+    filter(Qtfd == nb_group) %>% 
+    pull(Peptide)
+  
+  db <- db %>% 
+    ## Keep only quantified peptides
+    ## and remove missing values
+    filter(Peptide %in% qtfd_pept &
+             !is.na(Output)) %>% 
+    ## Log2-transform intensity values
+    mutate(Output = log2(Output))
+  
+  return(db)
+}
+
+PB_DiffAna <- function(data, multi = F, 
+                       mu_0 = NULL, lambda_0 = 1, beta_0 = 1, alpha_0 = 1){
+  if (!multi) {
+    out <- posterior_mean(data = data,
+                          mu_0 = mu_0,
+                          lambda_0 = lambda_0, 
+                          beta_0 = beta_0, 
+                          alpha_0 = alpha_0)
+    
+    diff_out <- identify_diff(out)
+  }
+  
+  return(diff_out)
+}
+
+LM_DiffAna <- function(data, alpha = 0.05, FDR = NULL){
+  # Note, limma and DAPAR use data in wide format.
+  db_limma <- data %>% 
+    # Merge Group and Sample columns to denote biological samples analysed
+    unite(col = "Cond_Rep", c(Group,Sample),sep = "_") %>% 
+    # Reshape data in wide format
+    spread(key = "Cond_Rep", value = "Output")
+  
+  # Create quantitative data matrix to match DAPAR requirements
+  qdata <- db_limma %>%
+    # Tibble to dataframe to add row names to be propagated in results tables
+    as.data.frame(row.names = pull(db_limma %>% select(Peptide))) %>% 
+    select(-c(Peptide,Protein)) 
+  
+  # Create design dataframe to match DAPAR requirements
+  metadata <- data.frame(Sample.name = colnames(qdata),
+                         Condition = rep(c("Point1", "Point2", "Point3",
+                                           "Point4", "Point5", "Point6",
+                                           "Point7"), rep(3,7)),
+                         Bio.Rep = 1:ncol(qdata))
+  
+  # Moderated t-test - OnevsOne setting
+  #res_DAPAR <- limmaCompleteTest(qData = as.matrix(qARATH),
+  #                               sTab = metadata,
+  #                               comp.type = "OnevsOne")
+  # Issue with the formatting of the output of DAPAR function, 
+  # Therefore, using the one in mi4p.
+  res_limma <- mi4p::limmaCompleteTest.mod(qData = as.matrix(qdata),
+                                           sTab = metadata,
+                                           comp.type = "OnevsOne")$res.l
+  
+  P_Value <- res_limma$P_Value %>% 
+    rownames_to_column(var = "Peptide")
+  
+  if(!is.null(FDR)){
+    P_Value <- P_Value %>% 
+      mutate(across(-Peptide, 
+                    ~ cp4p::adjust.p(p = ., alpha = FDR)$adjp %>% 
+                      select(adjusted.p) %>% pull))
+  }
+  
+  P_Value <- P_Value %>% 
+    pivot_longer(-Peptide, 
+                 names_to = "Comparison", 
+                 values_to = "pval") %>%
+    separate(col = Comparison, 
+             into = c("Group", NA, "Group2", NA), 
+             sep = "_") %>% 
+    mutate(Signif = pval < alpha)
+  
+  FC <- res_limma$logFC %>% 
+    rownames_to_column(var = "Peptide") %>% 
+    pivot_longer(-Peptide, 
+                 names_to = "Comparison", 
+                 values_to = "log2FC") %>%
+    separate(col = Comparison, 
+             into = c("Group", NA, "Group2", NA), 
+             sep = "_")
+  
+  P_Value %>% 
+    left_join(y = FC, by = c("Peptide", "Group", "Group2")) %>% 
+    return()
+}
+
+CombineDA <- function(data, PB_res, LM_res){
+  
+  # Experimental condition/design to calculate true FC
+  exp_cond <- tibble(Group = paste("Point", 1:7, sep = ""),
+                     fmol = c(0.05, 0.25, 0.5, 1.25, 2.5, 5, 10)) %>% 
+    expand_grid(Group2 = unique(Group)) %>% 
+    filter(Group != Group2) %>% 
+    left_join(tibble(Group2 = paste("Point", 1:7, sep = ""),
+                     fmol2 = c(0.05, 0.25, 0.5, 1.25, 2.5, 5, 10)), 
+              by = "Group2") %>% 
+    mutate(True_log2FC = log2(fmol/fmol2), .keep = "unused")
+  
+  # Create a "reference mean" 
+  ref_pept <- data %>% 
+    arrange(Peptide) %>% 
+    left_join(tibble(Group = paste("Point", 1:7, sep = ""),
+                     fmol = c(0.05, 0.25, 0.5, 1.25, 2.5, 5, 10)),
+              by = "Group") %>% 
+    mutate(Mean = if_else(str_detect(Protein, "UPS"), 
+                          true = Output + log2(10/fmol), 
+                          false = Output)) %>% 
+    group_by(Peptide, Protein) %>% 
+    mutate(Mean = if_else(str_detect(Protein, "UPS"), 
+                          true = mean(Mean, na.rm = T) - log2(10/fmol),
+                          false = mean(Mean, na.rm = T))) %>% 
+    group_by(Peptide, Protein, Group, Mean) %>% 
+    summarise(Avg = mean(Output)) %>% 
+    ungroup %>% 
+    mutate(Diff = Mean - Avg, Case = str_detect(Protein, "UPS"))
+  
+  # Merge result tables
+  db_results <- PB_res %>%
+    filter(Group2 == "Point7") %>% 
+    # Add Protein Column
+    left_join(y = .,
+              x = data %>%
+                select(Peptide,Protein) %>%
+                distinct,
+              by = "Peptide") %>% 
+    # Add limma results
+    left_join(y = LM_res %>% 
+                filter(Group2 == "Point7") %>% 
+                rename(LM_log2FC = log2FC),
+              by = join_by(Peptide, Group, Group2)) %>% 
+    # Add ground truth column
+    mutate(Truth = if_else(str_detect(Protein, "ups"), 
+                           true = T, false = F)) %>% 
+    # Add fmol equivalent to groups
+    left_join(y = exp_cond, by = join_by(Group, Group2)) %>% 
+    # Add FC from ProteoBayes and true FC
+    mutate(PB_log2FC = mu - mu2,
+           True_log2FC = if_else(Truth, true = True_log2FC, false = 0)) %>% 
+    # Add ref mean
+    left_join(ref_pept %>% select(Peptide, Protein, Group, Mean), 
+              by = join_by(Peptide, Protein, Group))
+  
+  db_eval <- db_results %>%
+    mutate('MSE' = (Mean - mu)^2,
+           'CIC' = ((Mean > CI_inf) & (Mean < CI_sup)) * 100,
+           'Diff_mean' = PB_log2FC,
+           'Diff_LM' = LM_log2FC,
+           'CIC_width' = CI_sup - CI_inf,
+           'Distinct' = (Distinct == Truth)*100,
+           'Signif' = (Signif == Truth)*100,
+           "MSE_PBT" = (PB_log2FC - True_log2FC)^2,
+           "MSE_LMT" = (LM_log2FC - True_log2FC)^2) %>%
+    group_by(Group, Group2, Truth) %>%
+    summarise(across(c(MSE, CIC, Diff_mean, Diff_LM,
+                       pval, CIC_width, Distinct, Signif,
+                       MSE_PBT, MSE_LMT),
+                     .fns = list('Mean' = ~mean(.x,na.rm = T),
+                                 'Sd' = ~sd(.x,na.rm=T))),
+              .groups = 'drop') %>%
+    mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd),
+           'MSE_PBT_Mean' = sqrt(MSE_PBT_Mean), 'MSE_PBT_Sd' = sqrt(MSE_PBT_Sd),
+           'MSE_LMT_Mean' = sqrt(MSE_LMT_Mean), 'MSE_LMT_Sd' = sqrt(MSE_LMT_Sd)) %>%
+    mutate(across(MSE_Mean:MSE_LMT_Sd, ~ round(.x, 2))) %>%
+    reframe(Group, Group2, Truth,
+            'PB_diff_mean' =  paste0(Diff_mean_Mean, ' (', Diff_mean_Sd, ')'),
+            'CIC_width' =  paste0(CIC_width_Mean, ' (', CIC_width_Sd, ')'),
+            'Distinct' = paste0(Distinct_Mean, ' (', Distinct_Sd, ')'),
+            'LM_diff_mean' =  paste0(Diff_LM_Mean, ' (', Diff_LM_Sd, ')'),
+            'p_value' =  paste0(pval_Mean, ' (', pval_Sd, ')'),
+            'Signif' = paste0(Signif_Mean, ' (', Signif_Sd, ')'),
+            'RMSE' = paste0(MSE_Mean, ' (', MSE_Sd, ')'),
+            'CIC' =  paste0(CIC_Mean, ' (', CIC_Sd, ')'),
+            'RMSE_PBtoT' = paste0(MSE_PBT_Mean, ' (', MSE_PBT_Sd, ')'),
+            'RMSE_LMtoT' = paste0(MSE_LMT_Mean, ' (', MSE_LMT_Sd, ')')) %>%
+    left_join(db_results %>%
+                select(Group, Group2, Truth, True_log2FC) %>%
+                distinct,
+              join_by(Group, Group2, Truth)) %>%
+    mutate(True_diff_mean = round(True_log2FC, digits = 2),
+           .after = 'Truth', .keep = "unused")
+  
+  return(db_eval)
+  
+} 
+
+
+# -- DATA ANALYSIS -- #
 # Set random generator
 set.seed(17)
 
 # Load peptide-level data
 peptides <- read.delim("DATA/Arabido_UPS/peptides.txt")
+
+# Preprocess data for ProteoBayes setting
+db_ARATH <- PB_preprocess(peptides, max_NA = 2, nb_group = 7)
+
+# ProteoBayes - Univariate setting
+diff_PB <- PB_DiffAna(data = db_ARATH, 
+                      mu_0 = db_ARATH %>% 
+                        group_by(Group) %>% 
+                        mutate(mu_0 = mean(Output)) %>% pull(mu_0))
+
+diff_PB <- PB_DiffAna(db_ARATH)
+
+diff_PB <- PB_DiffAna(db_ARATH, 
+                      lambda_0 = 2)
+
+diff_PB <- PB_DiffAna(db_ARATH, 
+                      alpha_0 = 2)
+
+diff_PB <- PB_DiffAna(db_ARATH, 
+                      beta_0 = 2)
+
+
+diff_PB <- PB_DiffAna(db_ARATH, 
+                      alpha_0 = 5)
+
+diff_PB <- PB_DiffAna(db_ARATH, 
+                      lambda_0 = 0.01,
+                      alpha_0 = 0.01,
+                      beta_0 = 0.01)
+
+# DAPAR
+diff_LM <- LM_DiffAna(db_ARATH, FDR = 0.01)
+
+# Combine results
+db_eval <- CombineDA(db_ARATH, diff_PB, diff_LM)
+
+
+
+
+
+# -- DRAFT AND BULK -- #
 
 # Data preprocessing
 db_ARATH <- peptides %>% 
