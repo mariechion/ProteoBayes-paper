@@ -1,11 +1,8 @@
 # -- LIBRAIRIES -- # 
 library(tidyverse)
 library(ProteoBayes)
-library(DAPAR)
 library(cp4p)
 library(mi4p)
-library(yardstick)
-library(mvtnorm)
 
 # -- FUNCTIONS -- #
 PB_preprocess <- function(data, nb_group, max_NA, dapar = F){
@@ -193,14 +190,14 @@ CombineDA <- function(data, PB_res, LM_res){
            'CIC' = ((Mean > CI_inf) & (Mean < CI_sup)) * 100,
            'Diff_mean' = PB_log2FC,
            'Diff_LM' = LM_log2FC,
-           'CIC_width' = CI_sup - CI_inf,
+           'CI_width' = CI_sup - CI_inf,
            'Distinct' = (Distinct == Truth)*100,
            'Signif' = (Signif == Truth)*100,
            "MSE_PBT" = (PB_log2FC - True_log2FC)^2,
            "MSE_LMT" = (LM_log2FC - True_log2FC)^2) %>%
     group_by(Group, Group2, Truth) %>%
     summarise(across(c(MSE, CIC, Diff_mean, Diff_LM,
-                       pval, CIC_width, Distinct, Signif,
+                       pval, CI_width, Distinct, Signif,
                        MSE_PBT, MSE_LMT),
                      .fns = list('Mean' = ~mean(.x,na.rm = T),
                                  'Sd' = ~sd(.x,na.rm=T))),
@@ -211,7 +208,7 @@ CombineDA <- function(data, PB_res, LM_res){
     mutate(across(MSE_Mean:MSE_LMT_Sd, ~ round(.x, 2))) %>%
     reframe(Group, Group2, Truth,
             'PB_diff_mean' =  paste0(Diff_mean_Mean, ' (', Diff_mean_Sd, ')'),
-            'CIC_width' =  paste0(CIC_width_Mean, ' (', CIC_width_Sd, ')'),
+            'CI_width' =  paste0(CIC_width_Mean, ' (', CIC_width_Sd, ')'),
             'Distinct' = paste0(Distinct_Mean, ' (', Distinct_Sd, ')'),
             'LM_diff_mean' =  paste0(Diff_LM_Mean, ' (', Diff_LM_Sd, ')'),
             'p_value' =  paste0(pval_Mean, ' (', pval_Sd, ')'),
@@ -227,7 +224,14 @@ CombineDA <- function(data, PB_res, LM_res){
     mutate(True_diff_mean = round(True_log2FC, digits = 2),
            .after = 'Truth', .keep = "unused")
   
-  return(db_eval)
+  return(list(DiffAna = db_eval %>%
+                select(Group, Group2, Truth, Distinct, Signif),
+              DiffMean = db_eval %>%
+                select(Group, Group2, Truth, 
+                       True_diff_mean, PB_diff_mean, CI_width, LM_diff_mean,
+                       RMSE_PBtoT, RMSE_LMtoT),
+              EstimQual = db_eval %>%
+                select(Group, Group2, Truth, RMSE, CIC)))
   
 } 
 
@@ -301,10 +305,11 @@ diff_PB <- PB_DiffAna(db_YST,
 diff_LM <- LM_DiffAna(db_YST, FDR = 0.01)
 
 # Combine results
-db_eval <- CombineDA(db_YST, diff_PB, diff_LM)
+db_eval_YST <- CombineDA(db_YST, diff_PB, diff_LM)
 
-db_eval %>%
-  select(Group, Group2, Truth, True_diff_mean, PB_diff_mean, LM_diff_mean)
+db_eval_YST$DiffAna %>% view()
+db_eval_YST$DiffMean %>% view()
+db_eval_YST$PBPerf %>% view()
 
 
 
