@@ -148,11 +148,11 @@ CombineDA <- function(data, PB_res, LM_res){
     arrange(Peptide) %>% 
     mutate(fmol = as.numeric(str_replace(Group, "fmol","")),
            Mean = if_else(str_detect(Protein, "ups"), 
-                          true = Output + log2(10/fmol), 
+                          true = Output + log2(25/fmol), 
                           false = Output)) %>% 
     group_by(Peptide, Protein) %>% 
     mutate(Mean = if_else(str_detect(Protein, "ups"), 
-                          true = mean(Mean, na.rm = T) - log2(10/fmol),
+                          true = mean(Mean, na.rm = T) - log2(25/fmol),
                           false = mean(Mean, na.rm = T))) %>% 
     group_by(Peptide, Protein, Group, Mean) %>% 
     summarise(Avg = mean(Output)) %>% 
@@ -208,7 +208,7 @@ CombineDA <- function(data, PB_res, LM_res){
     mutate(across(MSE_Mean:MSE_LMT_Sd, ~ round(.x, 2))) %>%
     reframe(Group, Group2, Truth,
             'PB_diff_mean' =  paste0(Diff_mean_Mean, ' (', Diff_mean_Sd, ')'),
-            'CI_width' =  paste0(CIC_width_Mean, ' (', CIC_width_Sd, ')'),
+            'CI_width' =  paste0(CI_width_Mean, ' (', CI_width_Sd, ')'),
             'Distinct' = paste0(Distinct_Mean, ' (', Distinct_Sd, ')'),
             'LM_diff_mean' =  paste0(Diff_LM_Mean, ' (', Diff_LM_Sd, ')'),
             'p_value' =  paste0(pval_Mean, ' (', pval_Sd, ')'),
@@ -242,74 +242,35 @@ CombineDA <- function(data, PB_res, LM_res){
 set.seed(17)
 
 # Load peptide-level data
-peptides <- read.delim("DATA/Yeast_UPS/peptides.txt")
+peptides <- read.delim("REAL_DATA_XP/Yeast_UPS/peptides.txt")
 
 # Preprocess data for ProteoBayes setting
 db_YST <- PB_preprocess(peptides, max_NA = 2, nb_group = 6)
 
-# ProteoBayes - Univariate setting
-diff_PB <- PB_DiffAna(data = db_YST, 
-                      mu_0 = db_YST %>% 
-                        group_by(Group) %>% 
-                        mutate(mu_0 = mean(Output)) %>% pull(mu_0))
-
-diff_PB <- PB_DiffAna(db_YST)
-
-diff_PB <- posterior_mean(db_YST, lambda_0 = 2)
-
-db_YST %>%
-  posterior_mean(lambda_0 = 2) %>%
-  sample_distrib() %>% 
-  plot_distrib(group1 = "1fmol", group2 = "25fmol", 
-               #peptide = "AAFTECCQAADK") 
-               peptide = "ADGLAVIGVLMK") 
-
-diff_PB <- PB_DiffAna(db_YST, 
-                      lambda_0 = 2)
-
-diff_PB <- PB_DiffAna(db_YST, 
-                      lambda_0 = 0.5)
-
-diff_PB <- PB_DiffAna(db_YST, 
-                      lambda_0 = 0.1)
-
-diff_PB <- PB_DiffAna(db_YST, 
-                      lambda_0 = 0.01)
-
-diff_PB <- PB_DiffAna(db_YST, 
-                      lambda_0 = 0.001)
-
-diff_PB <- PB_DiffAna(db_YST, 
-                      alpha_0 = 2)
-
-diff_PB <- PB_DiffAna(db_YST, 
-                      alpha_0 = 100)
-
-diff_PB <- PB_DiffAna(db_YST,
-                      lambda_0 = 0.01,
-                      alpha_0 = 0.1)
-
-diff_PB <- PB_DiffAna(db_YST,
-                      lambda_0 = 0.01,
-                      alpha_0 = 0.1,
-                      beta_0 = 0.1)
-
-diff_PB <- PB_DiffAna(db_YST, 
-                      beta_0 = 100)
-
-
-diff_PB <- PB_DiffAna(db_YST, 
-                      alpha_0 = 5)
-
 # DAPAR
-diff_LM <- LM_DiffAna(db_YST, FDR = 0.01)
+diff_LM <- LM_DiffAna(db_YST, FDR = NULL)
+
+# ProteoBayes - Univariate setting
+diff_PB <- PB_DiffAna(db_YST,
+                      lambda_0 = 1e-10,
+                      alpha_0 = 1e-1,
+                      beta_0 = 1e-1)
 
 # Combine results
 db_eval_YST <- CombineDA(db_YST, diff_PB, diff_LM)
 
+YST_DiffMean <- db_eval_YST$DiffMean
+YST_EstimQual <- db_eval_YST$EstimQual
+
+
 db_eval_YST$DiffAna %>% view()
 db_eval_YST$DiffMean %>% view()
-db_eval_YST$PBPerf %>% view()
+db_eval_YST$EstimQual %>% view()
+
+
+
+
+
 
 
 

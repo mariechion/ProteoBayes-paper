@@ -241,46 +241,30 @@ CombineDA <- function(data, PB_res, LM_res){
 set.seed(17)
 
 # Load peptide-level data
-peptides <- read.delim("DATA/Arabido_UPS/peptides.txt")
+peptides <- read.delim("REAL_DATA_XP/Arabido_UPS/peptides.txt")
 
 # Preprocess data for ProteoBayes setting
 db_ARATH <- PB_preprocess(peptides, max_NA = 2, nb_group = 7)
 
-# ProteoBayes - Univariate setting
-diff_PB <- PB_DiffAna(data = db_ARATH, 
-                      mu_0 = db_ARATH %>% 
-                        group_by(Group) %>% 
-                        mutate(mu_0 = mean(Output)) %>% pull(mu_0))
-
-diff_PB <- PB_DiffAna(db_ARATH)
-
-diff_PB <- PB_DiffAna(db_ARATH, 
-                      lambda_0 = 2)
-
-diff_PB <- PB_DiffAna(db_ARATH, 
-                      alpha_0 = 2)
-
-diff_PB <- PB_DiffAna(db_ARATH, 
-                      beta_0 = 2)
-
-
-diff_PB <- PB_DiffAna(db_ARATH, 
-                      alpha_0 = 5)
-
-diff_PB <- PB_DiffAna(db_ARATH, 
-                      lambda_0 = 0.01,
-                      alpha_0 = 0.01,
-                      beta_0 = 0.01)
-
 # DAPAR
-diff_LM <- LM_DiffAna(db_ARATH, FDR = 0.01)
+diff_LM <- LM_DiffAna(db_ARATH, FDR = NULL)
+
+# ProteoBayes - Univariate setting
+diff_PB <- PB_DiffAna(db_ARATH, 
+                      lambda_0 = 1e-10,
+                      alpha_0 = 1e-1,
+                      beta_0 = 1e-1)
 
 # Combine results
 db_eval_ARATH <- CombineDA(db_ARATH, diff_PB, diff_LM)
 
+ARATH_DiffMean <- db_eval_ARATH$DiffMean
+ARATH_EstimQual <- db_eval_ARATH$EstimQual
+
+
 db_eval_ARATH$DiffAna %>% view()
 db_eval_ARATH$DiffMean %>% view()
-db_eval_ARATH$PBPerf %>% view()
+db_eval_ARATH$EstimQual %>% view()
 
 
 
