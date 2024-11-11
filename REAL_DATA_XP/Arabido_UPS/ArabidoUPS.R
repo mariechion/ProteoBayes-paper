@@ -87,45 +87,47 @@ LM_DiffAna <- function(data, alpha = 0.05, FDR = NULL){
                          Bio.Rep = 1:ncol(qdata))
   
   # Moderated t-test - OnevsOne setting
-  #res_DAPAR <- limmaCompleteTest(qData = as.matrix(qARATH),
-  #                               sTab = metadata,
-  #                               comp.type = "OnevsOne")
+  res_limma <- DAPAR::limmaCompleteTest(qData = as.matrix(qdata),
+                                sTab = metadata,
+                                comp.type = "OnevsOne")
+  
+  return(res_limma)
   # Issue with the formatting of the output of DAPAR function, 
   # Therefore, using the one in mi4p.
-  res_limma <- mi4p::limmaCompleteTest.mod(qData = as.matrix(qdata),
-                                           sTab = metadata,
-                                           comp.type = "OnevsOne")$res.l
+  # res_limma <- mi4p::limmaCompleteTest.mod(qData = as.matrix(qdata),
+  #                                          sTab = metadata,
+  #                                          comp.type = "OnevsOne")$res.l
   
-  P_Value <- res_limma$P_Value %>% 
+  P_Value <- res_limma$P_Value %>%
     rownames_to_column(var = "Peptide")
-  
+
   if(!is.null(FDR)){
-    P_Value <- P_Value %>% 
-      mutate(across(-Peptide, 
-                    ~ cp4p::adjust.p(p = ., alpha = FDR)$adjp %>% 
+    P_Value <- P_Value %>%
+      mutate(across(-Peptide,
+                    ~ cp4p::adjust.p(p = ., alpha = FDR)$adjp %>%
                       select(adjusted.p) %>% pull))
   }
-  
-  P_Value <- P_Value %>% 
-    pivot_longer(-Peptide, 
-                 names_to = "Comparison", 
+
+  P_Value <- P_Value %>%
+    pivot_longer(-Peptide,
+                 names_to = "Comparison",
                  values_to = "pval") %>%
-    separate(col = Comparison, 
-             into = c("Group", NA, "Group2", NA), 
-             sep = "_") %>% 
+    separate(col = Comparison,
+             into = c("Group", NA, "Group2", NA),
+             sep = "_") %>%
     mutate(Signif = pval < alpha)
-  
-  FC <- res_limma$logFC %>% 
-    rownames_to_column(var = "Peptide") %>% 
-    pivot_longer(-Peptide, 
-                 names_to = "Comparison", 
+
+  FC <- res_limma$logFC %>%
+    rownames_to_column(var = "Peptide") %>%
+    pivot_longer(-Peptide,
+                 names_to = "Comparison",
                  values_to = "log2FC") %>%
-    separate(col = Comparison, 
-             into = c("Group", NA, "Group2", NA), 
+    separate(col = Comparison,
+             into = c("Group", NA, "Group2", NA),
              sep = "_")
-  
-  P_Value %>% 
-    left_join(y = FC, by = c("Peptide", "Group", "Group2")) %>% 
+
+  P_Value %>%
+    left_join(y = FC, by = c("Peptide", "Group", "Group2")) %>%
     return()
 }
 
