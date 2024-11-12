@@ -59,7 +59,8 @@ eval <- function(
     list_mean_diff = c(0, 1, 5, 10),
     list_var = c(1, 1, 1, 1),
     list_cov = c(0.1, 0.1, 0.1, 0.1),
-    multivariate = FALSE
+    multivariate = FALSE,
+    missing_ratio = 0
     ){
   
   db = simu_data(
@@ -68,7 +69,10 @@ eval <- function(
     list_mean_diff = list_mean_diff,
     list_var = list_var,
     list_cov = list_cov,
-    multivariate = multivariate)
+    multivariate = multivariate) %>% 
+    mutate(Missing = rbinom(1, 1, missing_ratio)) %>% 
+    mutate(Output = if_else(Missing == 1, Mean, Output)) %>% 
+    dplyr::select(- Missing)
   
   res = db %>%
     posterior_mean() %>%
@@ -103,8 +107,8 @@ eval <- function(
       )
   }
     
-    res <- res %>% 
-      left_join(multi_t_test(db), by = c('Peptide', 'Group', 'Group2')) %>% 
+    res <- res %>% mutate('p_value' = 0, Signif = 0) %>% 
+      # left_join(multi_t_test(db), by = c('Peptide', 'Group', 'Group2')) %>% 
       return()
 }
 
@@ -169,7 +173,7 @@ res2 = eval(
 
 summarise_eval(res2)
 
-## Experiment 3: Evaluation of posteriors for different variances 
+## Experiment 3: Differences between univariate and multivariate versions
 
 set.seed(42)
 
@@ -200,7 +204,6 @@ for(i in 1:100)
     bind_rows(res3_10) %>%
     bind_rows(res3_100)
 }
-
 
 co = res3_loop %>% 
   group_by(Peptide, Group, Group2, Multivariate, Nb_peptide) %>% 
@@ -234,6 +237,18 @@ for(i in c(10, 100, 1000)){
 }
 
 ## Experiment 5: Evaluation of the uncertainty bias coming from imputation 
+
+res5 = eval(
+  nb_peptide = 1000,
+  nb_sample = 100,
+  list_mean_diff = c(0, 1),
+  list_var = c(1, 1),
+  multivariate = FALSE,
+  missing_ratio = 0.8
+)
+
+sum_res5 = summarise_eval(res5)
+
 
 #### GIF ProteoBayes visualisation ####
 set.seed(1)
