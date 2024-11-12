@@ -16,7 +16,7 @@ res_ARATH <- real_data_eval(data = db_ARATH, type = "ARATH",
                             prop_NA = 0.2,
                             multi = F,
                             mu_0 = NULL, 
-                            lambda_0 = 1e-10, beta_0 = 0.1, alpha_0 = 0.1,
+                            lambda_0 = 1e-10, beta_0 = 0.01, alpha_0 = 0.01,
                             alpha = 0.05, FDR = NULL)
 
 ARATH_DiffMean <- res_ARATH$results$DiffMean
@@ -27,13 +27,13 @@ res_YST <- real_data_eval(data = db_YST, type = "YST",
                           prop_NA = 0.2,
                           multi = F,
                           mu_0 = NULL, 
-                          lambda_0 = 1e-10, beta_0 = 0.1, alpha_0 = 0.1,
+                          lambda_0 = 1e-10, beta_0 = 0.01, alpha_0 = 0.01,
                           alpha = 0.05, FDR = NULL)
 
 YST_DiffMean <- res_YST$results$DiffMean
 YST_EstimQual <- res_YST$results$EstimQual
 
-db_MOUSE <- read_delim("REAL_DATA_XP/DIAHuang2020/Spike-in-biol-var-OT-SN-Report.txt", 
+db_MOUSE <- read_delim("REAL_DATA_XP/Mouse_UPS/Spike-in-biol-var-OT-SN-Report.txt", 
                        delim = "\t", escape_double = FALSE, trim_ws = TRUE)
 
 res_MOUSE <- real_data_eval(data = db_MOUSE, type = "MOUSE",
@@ -41,7 +41,7 @@ res_MOUSE <- real_data_eval(data = db_MOUSE, type = "MOUSE",
                             prop_NA = 0.2,
                             multi = F,
                             mu_0 = NULL, 
-                            lambda_0 = 1e-10, beta_0 = 0.1, alpha_0 = 0.1,
+                            lambda_0 = 1e-10, beta_0 = 0.01, alpha_0 = 0.01,
                             alpha = 0.05, FDR = NULL)
 
 
