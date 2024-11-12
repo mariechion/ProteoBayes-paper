@@ -70,9 +70,11 @@ eval <- function(
     list_var = list_var,
     list_cov = list_cov,
     multivariate = multivariate) %>% 
+    group_by(Peptide, Group) %>% 
+    mutate(Average = mean(Output)) %>% 
     mutate(Missing = rbinom(1, 1, missing_ratio)) %>% 
-    mutate(Output = if_else(Missing == 1, Mean, Output)) %>% 
-    dplyr::select(- Missing)
+    mutate(Output = if_else(Missing == 1, Average, Output)) %>% 
+    dplyr::select(- c(Missing, Average))
   
   res = db %>%
     posterior_mean() %>%
