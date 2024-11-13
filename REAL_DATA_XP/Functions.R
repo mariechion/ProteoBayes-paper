@@ -73,13 +73,16 @@ LM_DiffAna <- function(data, group_labels, nb_rep, alpha, FDR){
   ## Create quantitative data matrix to match DAPAR requirements
   qdata <- db_limma %>%  
     column_to_rownames(var = "Peptide") %>% 
-    select(-Protein) 
+    select(-Protein)
   
   ## Create design dataframe to match DAPAR requirements
-  metadata <- data.frame(Sample.name = colnames(qdata),
-                         Condition = rep(group_labels,
-                                         rep(nb_rep, length(group_labels))),
-                         Bio.Rep = 1:ncol(qdata))
+  metadata <- data.frame(Sample.name = colnames(qdata)) %>% 
+    separate(Sample.name, sep = "_", into = c("Condition",NA), remove = F) %>% 
+    mutate(Bio.Rep = 1:ncol(qdata)) %>% 
+    arrange(factor(Condition, levels = group_labels))
+  
+  qdata <- qdata %>% 
+    select(metadata$Sample.name)
   
   ## Moderated t-test - OnevsOne setting
   res_limma <- DAPAR::limmaCompleteTest(qData = as.matrix(qdata),
@@ -248,6 +251,15 @@ real_data_eval <- function(data, type, maxquant = T,
                      "5fmol", "10fmol", "25fmol")
     nb_group = length(group_labels)
     fmol_labels = c(0.5, 1, 2.5, 5, 10, 25)
+    diff_str_id = "ups"
+  }
+  if (type == "YST_B"){
+    nb_rep = 4
+    output_str_id = "Intensity."
+    group_labels = c("10amol", "50amol", "100amol", "250amol", "500amol",
+                      "1fmol", "5fmol", "10fmol", "25fmol","50fmol")
+    nb_group = length(group_labels)
+    fmol_labels = c(0.01,0.05,0.1,0.25,0.5, 1, 5, 10, 25, 50)
     diff_str_id = "ups"
   }
   if (type == "MOUSE"){

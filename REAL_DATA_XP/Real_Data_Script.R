@@ -35,7 +35,6 @@ YST_EstimQual <- res_YST$results$EstimQual
 
 db_MOUSE <- read_delim("REAL_DATA_XP/Mouse_UPS/Spike-in-biol-var-OT-SN-Report.txt", 
                        delim = "\t", escape_double = FALSE, trim_ws = TRUE)
-
 res_MOUSE <- real_data_eval(data = db_MOUSE, type = "MOUSE",
                             maxquant = F,
                             prop_NA = 0.2,
@@ -47,3 +46,16 @@ res_MOUSE <- real_data_eval(data = db_MOUSE, type = "MOUSE",
 
 MOUSE_DiffMean <- res_MOUSE$results$DiffMean
 MOUSE_EstimQual <- res_MOUSE$results$EstimQual
+
+
+db_YST_B <- read.delim("~/Documents/GitHub/ProteoBayes_draft/REAL_DATA_XP/Yeast_UPS_B/peptides.txt")
+res_YST_B <- real_data_eval(data = db_YST_B, type = "YST_B",
+                          prop_NA = 0.2,
+                          multi = F,
+                          mu_0 = NULL, 
+                          lambda_0 = 1e-10, beta_0 = 0.01, alpha_0 = 0.01,
+                          alpha = 0.05, FDR = NULL)
+
+
+YST_B_DiffMean <- res_YST_B$results$DiffMean
+YST_B_EstimQual <- res_YST_B$results$EstimQual
