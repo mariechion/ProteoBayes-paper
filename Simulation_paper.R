@@ -65,7 +65,7 @@ eval <- function(
   
   db = simu_data(
     nb_peptide = nb_peptide,
-    nb_sample = nb_peptide,
+    nb_sample = nb_sample,
     list_mean_diff = list_mean_diff,
     list_var = list_var,
     list_cov = list_cov,
@@ -75,6 +75,41 @@ eval <- function(
     mutate(Missing = rbinom(1, 1, missing_ratio)) %>% 
     mutate(Output = if_else(Missing == 1, Average, Output)) %>% 
     dplyr::select(- c(Missing, Average))
+  
+  # Note, limma and DAPAR use data in wide format.
+  db_limma <- db %>% 
+    select(-Mean) %>% 
+    # Merge Group and Sample columns to denote biological samples analysed
+    unite(col = "Cond_Rep", c(Group,Sample), sep = "_") %>% 
+    # Reshape data in wide format
+    spread(key = "Cond_Rep", value = "Output")
+  
+  ## Create quantitative data matrix to match DAPAR requirements
+  qdata <- db_limma %>%  
+    column_to_rownames(var = "Peptide") 
+  
+  ## Create design dataframe to match DAPAR requirements
+  metadata <- data.frame(Sample.name = colnames(qdata)) %>% 
+    separate(Sample.name, sep = "_", into = c("Condition",NA), remove = F) %>% 
+    mutate(Bio.Rep = 1:ncol(qdata))
+  
+  qdata <- qdata %>% 
+    select(metadata$Sample.name)
+  
+  ## Moderated t-test - OnevsOne setting
+  res_limma <- DAPAR::limmaCompleteTest(qData = as.matrix(qdata),
+                                        sTab = metadata,
+                                        comp.type = "OnevsOne")
+  
+  P_Value <- res_limma$P_Value %>%
+    rownames_to_column(var = "Peptide") %>%
+    pivot_longer(-Peptide,
+                 names_to = "Comparison",
+                 values_to = "p_value") %>%
+    separate(col = Comparison,
+             into = c("Group", NA, "Group2", NA),
+             sep = "_") %>%
+    mutate(Signif = p_value < alpha)
   
   res = db %>%
     posterior_mean() %>%
@@ -86,9 +121,10 @@ eval <- function(
                             by = c('Peptide', 'Group2')) %>%
     mutate('MSE' = (Mean - mu2)^2,
            'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
-           'CIC_width' = CI_sup2 - CI_inf2,
+           'CI_width' = CI_sup2 - CI_inf2,
            'Diff_mean' = abs(mu2 - mu)) %>% 
-    
+    mutate(across(c(Group, Group2), .fns = as.character)) %>% 
+    left_join(y = P_Value, by = c("Peptide", "Group", "Group2")) %>% 
     mutate('Multivariate' = FALSE)
   
   if(multivariate){
@@ -104,20 +140,22 @@ eval <- function(
           mutate('MSE' = (Mean - mu2)^2,
                  'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
                  'Diff_mean' = abs(mu2 - mu),
-                 'CIC_width' = CI_sup2 - CI_inf2,
+                 'CI_width' = CI_sup2 - CI_inf2,
                  'Multivariate' = TRUE) 
       )
   }
     
-    res <- res %>% mutate('p_value' = 0, Signif = 0) %>% 
-      # left_join(multi_t_test(db), by = c('Peptide', 'Group', 'Group2')) %>% 
-      return()
+    # res <- res %>% mutate('p_value' = 0, Signif = 0) %>% 
+    #   # left_join(multi_t_test(db), by = c('Peptide', 'Group', 'Group2')) %>% 
+    #   return()
+  
+  return(res)
 }
 
 summarise_eval <- function(eval){
   eval %>%
     group_by(Group, Group2, Multivariate) %>%
-    summarise(across(c(MSE, CIC, Diff_mean,CIC_width, Distinct,
+    summarise(across(c(MSE, CIC, Diff_mean, CI_width, Distinct,
                        p_value, Signif),
                      .fns = list('Mean' = mean, 'Sd' = sd)),
                      .groups = 'drop') %>%
@@ -127,7 +165,7 @@ summarise_eval <- function(eval){
             'RMSE' = paste0(MSE_Mean, ' (', MSE_Sd, ')'),
             'CIC' =  paste0(CIC_Mean, ' (', CIC_Sd, ')'),
             'Diff_mean' =  paste0(Diff_mean_Mean, ' (', Diff_mean_Sd, ')'),
-            'CIC_width' =  paste0(CIC_width_Mean, ' (', CIC_width_Sd, ')'),
+            'CI_width' =  paste0(CI_width_Mean, ' (', CI_width_Sd, ')'),
             'Distinct' =  paste0(Distinct_Mean*100, ' (', Distinct_Sd*100, ')'),
             'p_value' =  paste0(p_value_Mean, ' (', p_value_Sd, ')')) %>%
     return()
