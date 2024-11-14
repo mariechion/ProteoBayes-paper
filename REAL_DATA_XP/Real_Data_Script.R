@@ -40,7 +40,7 @@ MOUSE_DiffMean <- res_MOUSE$results$DiffMean
 MOUSE_EstimQual <- res_MOUSE$results$EstimQual
 
 
-db_YST_B <- read.delim("~/Documents/GitHub/ProteoBayes_draft/REAL_DATA_XP/Yeast_UPS_B/peptides.txt")
+db_YST_B <- read.delim("REAL_DATA_XP/Yeast_UPS_B/peptides.txt")
 res_YST_B <- real_data_eval(data = db_YST_B, type = "YST_B", maxquant = T)
 
 YST_B_DiffMean <- res_YST_B$results$DiffMean
