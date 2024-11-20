@@ -2,32 +2,39 @@
 data_preprocessing <- function(data, output_str_id, prop_NA, nb_group, nb_rep,
                                maxquant){
   if(maxquant){
-    db <- data %>% 
-    ## Select columns of interest
-    select(Sequence, Leading.razor.protein, starts_with("Intensity.")) %>% 
-    ## Replace 0 intensity values by NA
-    mutate(across(starts_with("Intensity."), ~ if_else(.x == 0, 
-                                                       true = NA, 
-                                                       false = .x))) %>% 
-    ## Reshape data in long format
-    gather(key = "Condition", value = "Intensity", 
-           -c(Sequence, Leading.razor.protein)) %>% 
-    ## Transform the key into Group and Sample
-    separate(col = Condition, into = c("Group","Sample"), sep = "_") %>% 
-    mutate(Group = str_replace(Group, output_str_id, "")) %>% 
-    ## Rename columns to match ProteoBayes requirements
-    rename(Peptide = Sequence, 
-           Protein = Leading.razor.protein,
-           Output = Intensity) %>%
-    ## Remove reverse and contaminant proteins, remove iRT. 
-    filter(!str_detect(Protein, "CON") & !str_detect(Protein, "REV") &
-             !str_detect(Protein, "iRT"))
+    db_temp <- data %>% 
+      ## Select columns of interest
+      select(Sequence, Leading.razor.protein, starts_with("Intensity.")) %>% 
+      ## Rename columns to match ProteoBayes requirements
+      rename(Peptide = Sequence, 
+             Protein = Leading.razor.protein) %>%
+      ## Remove reverse and contaminant proteins, remove iRT. 
+      filter(!str_detect(Protein, "CON") & !str_detect(Protein, "REV") &
+               !str_detect(Protein, "iRT")) %>% 
+      ## Replace 0 intensity values by NA
+      mutate(across(starts_with("Intensity."), ~ if_else(.x == 0, 
+                                                         true = NA, 
+                                                         false = log2(.x))))
+    
+    db <- db_temp %>%
+      select(-Protein) %>% 
+      column_to_rownames(var = "Peptide") %>%
+      as.matrix() %>% 
+      preprocessCore::normalize.quantiles(copy = F) %>% 
+      as_tibble(rownames = "Peptide") %>% 
+      left_join(x = db_temp %>% select("Peptide", "Protein"),
+                by = "Peptide") %>% 
+      pivot_longer(-c("Peptide","Protein"), 
+                   names_to = c("Group", "Sample"), names_sep = "_",
+                   values_to = "Output") %>% 
+      mutate(Group = str_replace(Group, output_str_id, ""))
+      
   }
   else{db <- data}
   
   # Get quantified peptides: 
   ## *max_NA* missing values in each of the *nb_group* groups.
-  max_NA = floor(nb_rep * (1-prop_NA))
+  max_NA = floor(nb_rep * prop_NA)
   qtfd_pept <- db %>% 
     group_by(Peptide, Group) %>% 
     summarise(Count_NA = sum(is.na(Output))) %>% 
@@ -41,9 +48,7 @@ data_preprocessing <- function(data, output_str_id, prop_NA, nb_group, nb_rep,
     ## Keep only quantified peptides
     ## and remove missing values
     filter(Peptide %in% qtfd_pept &
-             !is.na(Output)) %>% 
-    ## Log2-transform intensity values
-    mutate(Output = log2(Output))
+             !is.na(Output))
   
   return(db)
 }
@@ -270,7 +275,7 @@ real_data_eval <- function(data, type, maxquant = T,
     fmol_labels = c(0.75, 0.83, 1.07, 2.04, 7.54)
     diff_str_id = "_UPS"
     
-    data <- data %>% 
+    data_temp <- data %>% 
       select(R.Condition, R.Replicate, PG.ProteinAccessions, EG.StrippedSequence,
              FG.MS1PeakArea) %>% 
       rename(Peptide = EG.StrippedSequence,
@@ -278,12 +283,23 @@ real_data_eval <- function(data, type, maxquant = T,
              Group = R.Condition,
              Sample = R.Replicate,
              Intensity = FG.MS1PeakArea) %>% 
-      arrange(Group,Sample, Protein, Peptide) %>%
-      mutate(Sample = case_match(Sample, 6 ~ 3, .default = Sample)) %>% 
       group_by(Group,Sample, Protein, Peptide) %>% 
       summarise(Output = mean(Intensity)) %>% 
-      mutate(Output = case_when(Output <= 1 ~ NA, .default = Output)) %>% 
+      mutate(Output = if_else(Output <= 1, NA, log2(Output))) %>% 
       ungroup()
+    
+    data <- data_temp %>% 
+      pivot_wider(names_from = c("Group","Sample"), values_from = "Output") %>% 
+      select(-Protein) %>% 
+      column_to_rownames(var = "Peptide") %>%
+      as.matrix() %>% 
+      preprocessCore::normalize.quantiles(copy = F) %>% 
+      as_tibble(rownames = "Peptide") %>% 
+      left_join(x = data_temp %>% select("Peptide", "Protein") %>% distinct,
+                by = "Peptide") %>% 
+      pivot_longer(-c("Peptide","Protein"), 
+                   names_to = c("Group", "Sample"), names_sep = "_",
+                   values_to = "Output")
   }
   
   # Data preprocessing to ProteoBayes format
