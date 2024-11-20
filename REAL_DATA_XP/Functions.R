@@ -231,7 +231,7 @@ real_data_eval <- function(data, type, maxquant = T,
                            prop_NA = 0.2,
                            multi = F,
                            mu_0 = NULL, 
-                           lambda_0 = 1e-10, beta_0 = 0.1, alpha_0 = 0.1,
+                           lambda_0 = 1e-10, beta_0 = 1, alpha_0 = 1,
                            alpha = 0.05, FDR = NULL){
   # Set parameters depending on the data used
   if (type == "ARATH"){
