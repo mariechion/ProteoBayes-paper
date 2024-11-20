@@ -9,8 +9,6 @@ source("REAL_DATA_XP/Functions.R")
 
 
 # -- EXPERIMENTS -- #
-set.seed(17)
-
 prop_NA = 0.2
 multi = F
 mu_0 = NULL
@@ -19,6 +17,8 @@ beta_0 = 0.01
 alpha_0 = 0.01
 alpha = 0.05
 FDR = NULL
+
+set.seed(17)
 
 db_ARATH <- read.delim("REAL_DATA_XP/Arabido_UPS/peptides.txt")
 res_ARATH <- real_data_eval(data = db_ARATH, type = "ARATH", maxquant = T)
@@ -58,8 +58,8 @@ diff_mean <- rbind(ARATH_DiffMean %>%
                      mutate(Experiment = "Bouyssie_2020")) %>% 
   relocate(Experiment)
 
-save(diff_mean, file = "REAL_DATA_XP/Diff_Mean_Results")
-write_csv(diff_mean, file = "REAL_DATA_XP/Diff_Mean_Results.csv")
+#save(diff_mean, file = "REAL_DATA_XP/Diff_Mean_Results")
+#write_csv(diff_mean, file = "REAL_DATA_XP/Diff_Mean_Results.csv")
 
 estim_qual <- rbind(ARATH_EstimQual %>% 
                      mutate(Experiment = "Chion_2022"), 
@@ -71,6 +71,11 @@ estim_qual <- rbind(ARATH_EstimQual %>%
                      mutate(Experiment = "Bouyssie_2020")) %>% 
   relocate(Experiment)
 
-save(estim_qual, file = "REAL_DATA_XP/Estim_Qual_Results")
-write_csv(estim_qual, file = "REAL_DATA_XP/Estim_Qual_Results.csv")
+#save(estim_qual, file = "REAL_DATA_XP/Estim_Qual_Results")
+#write_csv(estim_qual, file = "REAL_DATA_XP/Estim_Qual_Results.csv")
 
+combined_results <- diff_mean %>% 
+  left_join(y = estim_qual, 
+            by = c("Experiment", "Group", "Group2", "Truth"))
+# save(combined_results, file = "REAL_DATA_XP/Combined_Results")
+# write_csv(combined_results, file = "REAL_DATA_XP/Combined_Results.csv")
