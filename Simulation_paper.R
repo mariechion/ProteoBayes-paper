@@ -61,8 +61,11 @@ eval <- function(
     list_cov = c(0.1, 0.1, 0.1, 0.1),
     multivariate = FALSE,
     missing_ratio = 0,
-    alpha = 0.05
-    ){
+    alpha = 0.05,
+    mu_0 = NULL,
+    lambda_0,
+    beta_0,
+    alpha_0){
   
   db = simu_data(
     nb_peptide = nb_peptide,
@@ -113,7 +116,8 @@ eval <- function(
     mutate(LM_Signif = LM_p_value < alpha)
   
   res = db %>%
-    posterior_mean() %>%
+    posterior_mean(mu_0 = mu_0, lambda_0 = lambda_0,
+                   alpha_0 = alpha_0, beta_0 = beta_0) %>%
     identify_diff() %>%
     dplyr::filter(Group == 1) %>%
     left_join(db %>% select(c('Peptide', 'Group', 'Mean')) %>%
@@ -196,10 +200,12 @@ multi_t_test <- function(data){
 set.seed(42)
 
 res1 = eval(
-  nb_peptide = 1000,
-  nb_sample = 1000,
+  nb_peptide = 10000,
+  nb_sample = 100,
   list_mean_diff = c(0, 0, 1, 5, 10),
-  list_var = c(1, 1, 1, 1, 1)
+  list_var = c(1, 1, 1, 1, 1),
+  lambda_0 = 1e-10,
+  alpha_0 = 1, beta_0 = 1
   )
 
 summarise_eval(res1)
