@@ -60,7 +60,8 @@ eval <- function(
     list_var = c(1, 1, 1, 1),
     list_cov = c(0.1, 0.1, 0.1, 0.1),
     multivariate = FALSE,
-    missing_ratio = 0
+    missing_ratio = 0,
+    alpha = 0.05
     ){
   
   db = simu_data(
@@ -105,11 +106,11 @@ eval <- function(
     rownames_to_column(var = "Peptide") %>%
     pivot_longer(-Peptide,
                  names_to = "Comparison",
-                 values_to = "p_value") %>%
+                 values_to = "LM_p_value") %>%
     separate(col = Comparison,
              into = c("Group", NA, "Group2", NA),
              sep = "_") %>%
-    mutate(Signif = p_value < alpha)
+    mutate(LM_Signif = LM_p_value < alpha)
   
   res = db %>%
     posterior_mean() %>%
@@ -122,7 +123,7 @@ eval <- function(
     mutate('MSE' = (Mean - mu2)^2,
            'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
            'CI_width' = CI_sup2 - CI_inf2,
-           'Diff_mean' = abs(mu2 - mu)) %>% 
+           'Diff_mean' = mu2 - mu) %>% 
     mutate(across(c(Group, Group2), .fns = as.character)) %>% 
     left_join(y = P_Value, by = c("Peptide", "Group", "Group2")) %>% 
     mutate('Multivariate' = FALSE)
@@ -139,15 +140,15 @@ eval <- function(
                     by = c('Peptide', 'Group2')) %>%
           mutate('MSE' = (Mean - mu2)^2,
                  'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
-                 'Diff_mean' = abs(mu2 - mu),
+                 'Diff_mean' = mu2 - mu,
                  'CI_width' = CI_sup2 - CI_inf2,
                  'Multivariate' = TRUE) 
       )
   }
     
-    # res <- res %>% mutate('p_value' = 0, Signif = 0) %>% 
-    #   # left_join(multi_t_test(db), by = c('Peptide', 'Group', 'Group2')) %>% 
-    #   return()
+    res <- res %>% 
+     left_join(multi_t_test(db),
+               by = c('Peptide', 'Group', 'Group2'))
   
   return(res)
 }
@@ -156,18 +157,19 @@ summarise_eval <- function(eval){
   eval %>%
     group_by(Group, Group2, Multivariate) %>%
     summarise(across(c(MSE, CIC, Diff_mean, CI_width, Distinct,
-                       p_value, Signif),
+                       p_value, Signif, LM_p_value, LM_Signif),
                      .fns = list('Mean' = mean, 'Sd' = sd)),
                      .groups = 'drop') %>%
     mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd)) %>%
-    mutate(across(MSE_Mean:Signif_Sd, ~ round(.x, 2))) %>%
+    mutate(across(MSE_Mean:LM_Signif_Sd, ~ round(.x, 2))) %>%
     reframe(Group, Group2, Multivariate,
-            'RMSE' = paste0(MSE_Mean, ' (', MSE_Sd, ')'),
-            'CIC' =  paste0(CIC_Mean, ' (', CIC_Sd, ')'),
             'Diff_mean' =  paste0(Diff_mean_Mean, ' (', Diff_mean_Sd, ')'),
             'CI_width' =  paste0(CI_width_Mean, ' (', CI_width_Sd, ')'),
+            'RMSE' = paste0(MSE_Mean, ' (', MSE_Sd, ')'),
+            'CIC' =  paste0(CIC_Mean, ' (', CIC_Sd, ')'),
             'Distinct' =  paste0(Distinct_Mean*100, ' (', Distinct_Sd*100, ')'),
-            'p_value' =  paste0(p_value_Mean, ' (', p_value_Sd, ')')) %>%
+            'p_value' =  paste0(p_value_Mean, ' (', p_value_Sd, ')'),
+            'LM_p_value' =  paste0(LM_p_value_Mean, ' (', LM_p_value_Sd, ')')) %>%
     return()
 }
 
@@ -183,7 +185,8 @@ multi_t_test <- function(data){
     dplyr::filter(Group == 1, Group2 != 1) %>%
     dplyr::group_by(Peptide, Group, Group2) %>%
     dplyr::reframe('p_value' = t.test(Output, Output2)$p.value,
-                   'Signif' = (p_value < 0.05)) %>% 
+                   'Signif' = (p_value < 0.05))  %>% 
+    mutate(across(c(Group, Group2), .fns = as.character)) %>% 
     return()
 }
 
@@ -194,19 +197,19 @@ set.seed(42)
 
 res1 = eval(
   nb_peptide = 1000,
-  nb_sample = 5,
+  nb_sample = 1000,
   list_mean_diff = c(0, 0, 1, 5, 10),
   list_var = c(1, 1, 1, 1, 1)
   )
 
-co = summarise_eval(res1)
+summarise_eval(res1)
 
 ## Experiment 2: Evaluation of posteriors for different variances 
 set.seed(1)
 
 res2 = eval(
   nb_peptide = 1000,
-  nb_sample = 5,
+  nb_sample = 1000,
   list_mean_diff = c(0, 1, 1, 1, 1),
   list_var = c(1, 1, 5, 10, 20)
 )
