@@ -196,6 +196,147 @@ multi_t_test <- function(data){
 
 #### Simulation study  ####
 
+
+## Pre-experiment: Role of alpha_0 and beta_0 on CI_Width and CIC
+## and impact of the number of samples.
+
+db_sim <- map(.x = c(3,5,10,100),
+              .f = ~ simu_data(nb_peptide = 1000,
+                             nb_sample = .x,
+                             list_mean_diff = c(0,1,5,10,1,1),
+                             list_var = c(1,1,1,1,5,10)) %>% 
+                mutate(nb_samples = .x)) %>% 
+  bind_rows()
+
+exp_sim <- tibble(alpha0 = rep(rep(c(0.01, 0.1, 1), rep(3,3)),4),
+                 beta0 = rep(c(0.01,0.1,1),12)) %>% 
+  rowwise() %>% 
+  reframe(db_sim %>%
+            group_by(nb_samples) %>%
+            ProteoBayes::posterior_mean(lambda_0 = 1e-10, 
+                                        alpha_0 = alpha0,
+                                        beta_0 = beta0) %>% 
+            ProteoBayes::identify_diff() %>% 
+            filter(Group == 1) %>% 
+            left_join(db_sim %>% 
+                        filter(nb_samples == nb_samples) %>% 
+                        select(c('nb_samples','Peptide', 'Group', 'Mean')) %>%
+                        distinct() %>%
+                        rename('Group2' = Group),
+                      by = c('Peptide', 'Group2')) %>%
+            mutate('MSE' = (Mean - mu2)^2,
+                   'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
+                   'CI_width' = CI_sup2 - CI_inf2,
+                   'Diff_mean' = mu2 - mu) %>% 
+            mutate(alpha_0 = alpha0, beta_0 = beta0))
+
+### Instead of wanting a straightforward function, make it annoyingly manually.
+
+db_sim <- map(.x = c(3,5,10,100),
+              .f = ~ simu_data(nb_peptide = 1000,
+                               nb_sample = .x,
+                               list_mean_diff = c(0,1,5,10,1,1),
+                               list_var = c(1,1,1,1,5,10)) %>% 
+                mutate(nb_samples = .x))
+
+exp_sim <- lapply(db_sim, function(db){
+  tibble(alpha0 = rep(c(0.01, 0.1, 1), rep(3,3)),
+         beta0 = rep(c(0.01,0.1,1),3)) %>% 
+    rowwise() %>% 
+    reframe(db %>%
+              ProteoBayes::posterior_mean(lambda_0 = 1e-10, 
+                                          alpha_0 = alpha0,
+                                          beta_0 = beta0) %>% 
+              ProteoBayes::identify_diff() %>% 
+              filter(Group == 1) %>% 
+              mutate(alpha_0 = alpha0, beta_0 = beta0)) %>% 
+    left_join(db %>% 
+                select(c('Peptide', 'Group', 'Mean')) %>%
+                distinct() %>%
+                rename('Group2' = Group),
+              by = c('Peptide', 'Group2')) %>%
+    mutate('MSE' = (Mean - mu2)^2,
+           'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
+           'CI_width' = CI_sup2 - CI_inf2,
+           'Diff_mean' = mu2 - mu)
+    
+}) 
+
+exp_sim %>% 
+  bind_rows(.id = "nb_samples") %>% 
+  mutate(nb_samples = case_match(nb_samples, 
+                                 '1' ~ '3', '2' ~ '5', '3' ~ '10', '4' ~ '100'),
+         Group2 = case_match(Group2,
+                             2 ~ "N(1,1)",
+                             3 ~ "N(5,1)",
+                             4 ~ "N(10,1)",
+                             5 ~ "N(1,5)",
+                             6 ~ "N(1,10)")) %>% 
+  select(nb_samples, alpha_0, beta_0, Group2, 
+         Peptide, MSE, CIC, CI_width, Diff_mean) %>% 
+  mutate(nb_samples = factor(nb_samples, levels = c('3','5','10','100'))) %>% 
+  group_by(nb_samples, alpha_0, beta_0, Group2) %>% 
+  summarise(CIC_mean = mean(CIC)) %>% 
+  filter(Group2 == "N(5,1)") %>% 
+  ggplot() +
+  geom_raster(aes(x = alpha_0, y = beta_0, fill = CIC_mean),
+              interpolate = T) +
+  scale_x_continuous(transform = "log10") +
+  scale_y_continuous(transform = "log10") +
+  # geom_boxplot(aes(x = nb_samples, 
+  #                  y = CI_width, 
+  #                  fill = Group2)) +
+  # facet_grid(beta_0 ~ alpha_0, labeller = "label_both") +
+  theme_minimal()
+  
+  
+## Heatmaps
+
+db_heatmap <- simu_data(nb_peptide = 1000,
+                        nb_sample = 5,
+                        list_mean_diff = c(1,5),
+                        list_var = c(1,1))
+
+exp_heatmap <- tibble(alpha0 = rep(seq(-2,2,0.25), rep(17,17)),
+                      beta0 = rep(seq(-2,2,0.25),17)) %>% 
+  mutate(across(alpha0:beta0, ~10^(.))) %>% 
+  rowwise() %>% 
+  reframe(db_heatmap %>%
+            ProteoBayes::posterior_mean(lambda_0 = 1e-10, 
+                                        alpha_0 = alpha0,
+                                        beta_0 = beta0) %>% 
+            ProteoBayes::identify_diff() %>% 
+            filter(Group == 1) %>% 
+            mutate(alpha_0 = alpha0, beta_0 = beta0)) %>% 
+  left_join(db_heatmap %>% 
+              select(c('Peptide', 'Group', 'Mean')) %>%
+              distinct() %>%
+              rename('Group2' = Group),
+            by = c('Peptide', 'Group2')) %>%
+  mutate('MSE' = (Mean - mu2)^2,
+         'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
+         'CI_width' = CI_sup2 - CI_inf2,
+         'Diff_mean' = mu2 - mu)
+
+exp_heatmap %>% 
+  mutate(Group2 = case_match(Group2,
+                             2 ~ "N(5,1)")) %>% 
+  group_by(alpha_0, beta_0, Group2) %>% 
+  summarise(CIC_mean = mean(CIC)) %>%
+  mutate(Confidence = case_when(CIC_mean < 94 ~ "< 94",
+                                CIC_mean > 96 ~ "> 96", 
+                                .default = "94-96")) %>% 
+  filter(Group2 == "N(5,1)") %>% 
+  ggplot() +
+  geom_raster(aes(x = alpha_0, y = beta_0, 
+                  fill = CIC_mean),
+              interpolate = T) +
+  scale_x_continuous(transform = "log10") +
+  scale_y_continuous(transform = "log10") +
+  scale_fill_gradientn(colors = c(rep("red",70),"green","blue"), 
+                       limits = c(20,100)) +
+  theme_minimal()
+
 ## Experiment 1: Evaluation of posteriors for different effect sizes
 set.seed(42)
 
