@@ -13,8 +13,8 @@ prop_NA = 0
 multi = F
 mu_0 = NULL
 lambda_0 = 1e-10
-beta_0 = 1
-alpha_0 = 1
+alpha_0 = 0.01
+beta_0 = 0.3
 alpha = 0.05
 FDR = NULL
 
@@ -102,6 +102,12 @@ estim_qual <- rbind(ARATH_EstimQual %>%
                    YST_B_EstimQual %>% 
                      mutate(Experiment = "Bouyssie_2020")) %>% 
   relocate(Experiment)
+
+estim_qual %>% 
+  separate(col = CIC, into = c("CIC", NA), sep = " ") %>% 
+  mutate(CIC = as.numeric(CIC)) %>% 
+  group_by(Experiment, Group) %>% 
+  summarise(CIC_mean = mean(CIC)) %>% arrange(CIC_mean) %>% print(n = Inf)
 
 #save(estim_qual, file = "REAL_DATA_XP/Estim_Qual_Results")
 #write_csv(estim_qual, file = "REAL_DATA_XP/Estim_Qual_Results.csv")
