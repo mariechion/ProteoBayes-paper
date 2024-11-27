@@ -1,10 +1,10 @@
 
 data_preprocessing <- function(data, output_str_id, prop_NA, nb_group, nb_rep,
-                               maxquant){
+                               maxquant, normalize){
   if(maxquant){
     db_temp <- data %>% 
       ## Select columns of interest
-      select(Sequence, Leading.razor.protein, starts_with("Intensity.")) %>% 
+      select(Sequence, Leading.razor.protein, starts_with(output_str_id)) %>% 
       ## Rename columns to match ProteoBayes requirements
       rename(Peptide = Sequence, 
              Protein = Leading.razor.protein) %>%
@@ -12,22 +12,30 @@ data_preprocessing <- function(data, output_str_id, prop_NA, nb_group, nb_rep,
       filter(!str_detect(Protein, "CON") & !str_detect(Protein, "REV") &
                !str_detect(Protein, "iRT")) %>% 
       ## Replace 0 intensity values by NA
-      mutate(across(starts_with("Intensity."), ~ if_else(.x == 0, 
+      mutate(across(starts_with(output_str_id), ~ if_else(.x == 0, 
                                                          true = NA, 
                                                          false = log2(.x))))
-    
-    db <- db_temp %>%
-      select(-Protein) %>% 
-      column_to_rownames(var = "Peptide") %>%
-      as.matrix() %>% 
-      preprocessCore::normalize.quantiles(copy = F) %>% 
-      as_tibble(rownames = "Peptide") %>% 
-      left_join(x = db_temp %>% select("Peptide", "Protein"),
-                by = "Peptide") %>% 
-      pivot_longer(-c("Peptide","Protein"), 
-                   names_to = c("Group", "Sample"), names_sep = "_",
-                   values_to = "Output") %>% 
-      mutate(Group = str_replace(Group, output_str_id, ""))
+    if(normalize){
+      db <- db_temp %>%
+        select(-Protein) %>% 
+        column_to_rownames(var = "Peptide") %>%
+        as.matrix() %>% 
+        preprocessCore::normalize.quantiles(copy = F) %>% 
+        as_tibble(rownames = "Peptide") %>% 
+        left_join(x = db_temp %>% select("Peptide", "Protein"),
+                  by = "Peptide") %>% 
+        pivot_longer(-c("Peptide","Protein"), 
+                     names_to = c("Group", "Sample"), names_sep = "_",
+                     values_to = "Output") %>% 
+        mutate(Group = str_replace(Group, output_str_id, ""))
+    }
+    else{
+      db <- db_temp %>%
+        pivot_longer(-c("Peptide","Protein"), 
+                     names_to = c("Group", "Sample"), names_sep = "_",
+                     values_to = "Output") %>% 
+        mutate(Group = str_replace(Group, output_str_id, ""))
+    }
       
   }
   else{db <- data}
@@ -232,7 +240,7 @@ CombineDA <- function(data, group_labels, fmol_labels, diff_str_id,
                 select(Group, Group2, Truth, RMSE, CIC)))
 }
 
-real_data_eval <- function(data, type, maxquant = T,
+real_data_eval <- function(data, type, maxquant = T, normalize,
                            prop_NA = 0.2,
                            multi = F,
                            mu_0 = NULL, 
@@ -288,18 +296,23 @@ real_data_eval <- function(data, type, maxquant = T,
       mutate(Output = if_else(Output <= 1, NA, log2(Output))) %>% 
       ungroup()
     
-    data <- data_temp %>% 
-      pivot_wider(names_from = c("Group","Sample"), values_from = "Output") %>% 
-      select(-Protein) %>% 
-      column_to_rownames(var = "Peptide") %>%
-      as.matrix() %>% 
-      preprocessCore::normalize.quantiles(copy = F) %>% 
-      as_tibble(rownames = "Peptide") %>% 
-      left_join(x = data_temp %>% select("Peptide", "Protein") %>% distinct,
-                by = "Peptide") %>% 
-      pivot_longer(-c("Peptide","Protein"), 
-                   names_to = c("Group", "Sample"), names_sep = "_",
-                   values_to = "Output")
+    if(normalize){
+      data <- data_temp %>% 
+        pivot_wider(names_from = c("Group","Sample"), values_from = "Output") %>% 
+        select(-Protein) %>% 
+        column_to_rownames(var = "Peptide") %>%
+        as.matrix() %>% 
+        preprocessCore::normalize.quantiles(copy = F) %>% 
+        as_tibble(rownames = "Peptide") %>% 
+        left_join(x = data_temp %>% select("Peptide", "Protein") %>% distinct,
+                  by = "Peptide") %>% 
+        pivot_longer(-c("Peptide","Protein"), 
+                     names_to = c("Group", "Sample"), names_sep = "_",
+                     values_to = "Output")
+    }
+    else{
+      data <- data_temp
+    }
   }
   
   # Data preprocessing to ProteoBayes format
@@ -308,7 +321,8 @@ real_data_eval <- function(data, type, maxquant = T,
                            prop_NA = prop_NA, 
                            nb_group = nb_group,
                            nb_rep = nb_rep,
-                           maxquant = maxquant)
+                           maxquant = maxquant,
+                           normalize = normalize)
   
   # ProteoBayes Differential Analysis
   PB_res <- PB_DiffAna(data = db, multi = multi,

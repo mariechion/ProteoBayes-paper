@@ -9,7 +9,7 @@ source("REAL_DATA_XP/Functions.R")
 
 
 # -- EXPERIMENTS -- #
-prop_NA = 0
+prop_NA = 0.2
 multi = F
 mu_0 = NULL
 lambda_0 = 1e-10
@@ -21,7 +21,8 @@ FDR = NULL
 set.seed(17)
 
 db_ARATH <- read.delim("REAL_DATA_XP/Arabido_UPS/peptides.txt")
-res_ARATH <- real_data_eval(data = db_ARATH, type = "ARATH", maxquant = T,
+res_ARATH <- real_data_eval(data = db_ARATH, type = "ARATH", 
+                            maxquant = T, normalize = F,
                             prop_NA = prop_NA,
                             multi = multi,
                             mu_0 = mu_0,
