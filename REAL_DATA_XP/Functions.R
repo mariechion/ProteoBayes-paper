@@ -249,7 +249,7 @@ real_data_eval <- function(data, type, maxquant = T, normalize,
   # Set parameters depending on the data used
   if (type == "ARATH"){
     nb_rep = 3
-    output_str_id = "Intensity."
+    output_str_id = "LFQ.intensity."
     group_labels = c("Point1", "Point2", "Point3",
                      "Point4", "Point5", "Point6",
                      "Point7")
