@@ -42,7 +42,7 @@ data_preprocessing <- function(data, output_str_id, prop_NA, nb_group, nb_rep,
   
   # Get quantified peptides: 
   ## *max_NA* missing values in each of the *nb_group* groups.
-  max_NA = floor(nb_rep * prop_NA)
+  max_NA = round(nb_rep * prop_NA)
   qtfd_pept <- db %>% 
     group_by(Peptide, Group) %>% 
     summarise(Count_NA = sum(is.na(Output))) %>% 
@@ -237,7 +237,7 @@ CombineDA <- function(data, group_labels, fmol_labels, diff_str_id,
                        True_diff_mean, PB_diff_mean, CI_width, LM_diff_mean,
                        RMSE_PBtoT, RMSE_LMtoT),
               EstimQual = db_eval %>%
-                select(Group, Group2, Truth, RMSE, CIC)))
+                select(Group, Group2, Truth, True_diff_mean, RMSE, CIC)))
 }
 
 real_data_eval <- function(data, type, maxquant = T, normalize,

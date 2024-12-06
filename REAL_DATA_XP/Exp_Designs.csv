@@ -1,0 +1,25 @@
+Experiment,Group,Group2,True_diff_mean
+Muller_2016,0.5 fmol,25 fmol,-5.64
+,1 fmol,25 fmol,-4.64
+,2.5 fmol,25 fmol,-3.32
+,5 fmol,25 fmol,-2.32
+,10 fmol,25 fmol,-1.32
+Bouyssie_2020,10 amol,50 fmol,-12.29
+,50 amol,50 fmol,-9.97
+,100 amol,50 fmol,-8.97
+,250 amol,50 fmol,-7.64
+,500 amol,50 fmol,-6.64
+,1 fmol,50 fmol,-5.64
+,5 fmol,50 fmol,-3.32
+,10 fmol,50 fmol,-2.32
+,25 fmol,50 fmol,-1
+Huang_2020,0.75 amol,7.5 amol,-3.33
+,0.83 amol,7.5 amol,-3.18
+,1.07 amol,7.5 amol,-2.82
+,2.04 amol,7.5 amol,-1.89
+Chion_2022,0.05 fmol,10 fmol,-7.64
+,0.25 fmol,10 fmol,-5.32
+,0.5 fmol,10 fmol,-4.32
+,1.25 fmol,10 fmol,-3
+,2.5 fmol,10 fmol,-2
+,5 fmol,10 fmol,-1
