@@ -228,12 +228,12 @@ ci_coverage <- function(
 set.seed(42)
 
 res1 = eval(
-  nb_peptide = 10000,
-  nb_sample = 100,
+  nb_peptide = 1000,
+  nb_sample = 5,
   list_mean_diff = c(0, 0, 1, 5, 10),
   list_var = c(1, 1, 1, 1, 1),
   lambda_0 = 1e-10,
-  alpha_0 = 1, beta_0 = 1
+  alpha_0 = 0.01, beta_0 = 0.3
   )
 
 summarise_eval(res1)
@@ -243,9 +243,11 @@ set.seed(1)
 
 res2 = eval(
   nb_peptide = 1000,
-  nb_sample = 1000,
+  nb_sample = 5,
   list_mean_diff = c(0, 1, 1, 1, 1),
-  list_var = c(1, 1, 5, 10, 20)
+  list_var = c(1, 1, 5, 10, 20),
+  lambda_0 = 1e-10,
+  alpha_0 = 0.01, beta_0 = 0.3
 )
 
 summarise_eval(res2)
