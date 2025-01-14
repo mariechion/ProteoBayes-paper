@@ -5,6 +5,8 @@ library(DAPAR)
 
 #### Useful functions#####
 
+dummy = 42
+
 simu_data = function(
     nb_peptide = 5,
     nb_sample = 5,
