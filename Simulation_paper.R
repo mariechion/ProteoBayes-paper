@@ -198,8 +198,6 @@ multi_limma <- function(data){
   return(P_Value)
 }
 
-limma_test <- simu_db() %>% 
-  multi_limma()
 
 ci_coverage <- function(
     posterior,
