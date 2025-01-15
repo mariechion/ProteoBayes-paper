@@ -62,6 +62,8 @@ eval <- function(
     list_var = c(1, 1, 1, 1),
     list_cov = c(0.1, 0.1, 0.1, 0.1),
     multivariate = FALSE,
+    t_test = FALSE,
+    limma = FALSE,
     missing_ratio = 0,
     alpha = 0.05,
     mu_0 = NULL,
@@ -96,7 +98,6 @@ eval <- function(
            'CI_width' = CI_sup2 - CI_inf2,
            'Diff_mean' = mu2 - mu) %>% 
     mutate(across(c(Group, Group2), .fns = as.character)) %>% 
-    left_join(y = P_Value, by = c("Peptide", "Group", "Group2")) %>% 
     mutate('Multivariate' = FALSE)
   
   if(multivariate){
@@ -117,10 +118,18 @@ eval <- function(
       )
   }
     
+  if(t_test){
     res <- res %>% 
-     left_join(multi_t_test(db),
-               by = c('Peptide', 'Group', 'Group2'))
+      left_join(multi_t_test(db),
+                by = c('Peptide', 'Group', 'Group2'))
+  }
   
+  if(limma){
+    res <- res %>% 
+      left_join(multi_limma(db),
+                by = c('Peptide', 'Group', 'Group2'))
+  }
+
   return(res)
 }
 
@@ -311,24 +320,8 @@ floop = function(n){
     t3 = Sys.time()
     dummy = multi_posterior_mean(data)
     t4 = Sys.time()
-    
-    ## Prepare all the DAPAR nonsense formatting
-    qdata <- data %>% 
-      select(-Mean) %>% 
-      unite(col = "Cond_Rep", c(Group,Sample), sep = "_") %>% 
-      spread(key = "Cond_Rep", value = "Output") %>%  
-      column_to_rownames(var = "Peptide") 
-    
-    metadata <- data.frame(Sample.name = colnames(qdata)) %>% 
-      separate(Sample.name, sep = "_", into = c("Condition",NA), remove = F) %>% 
-      mutate(Bio.Rep = 1:ncol(qdata))
-    
+    dummy = multi_limma(data) 
     t5 = Sys.time()
-    dummy = DAPAR::limmaCompleteTest(qData = as.matrix(qdata),
-                                     sTab = metadata,
-                                     comp.type = "OnevsOne")
-    t6 = Sys.time()
-
     
     tib = bind_rows(
       tib, 
@@ -336,7 +329,7 @@ floop = function(n){
              'Time_t_test' = (t2 - t1),
              'Time' = (t3 - t2),
              'Time_multi' = (t4 - t3), 
-             'Time_lima' = (t6 - t5))
+             'Time_lima' = (t5 - t4))
     ) 
   }
   return(tib)
@@ -346,7 +339,6 @@ res4 = lapply(1:10, floop) %>%
   group_by(Nb_peptide) %>% 
   summarise(across(everything(), list(mean = mean, sd = sd)))
   
-
 ## Experiment 5: Evaluation of the uncertainty bias coming from imputation 
 
 res5 = eval(
