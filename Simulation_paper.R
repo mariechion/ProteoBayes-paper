@@ -294,27 +294,55 @@ co = res3_loop %>%
 
 ## Experiment 4: Evaluation of running times
 set.seed(1)
-res4 = c()
-for(i in c(10, 100, 1000)){
-  
-  data = simu_data(nb_peptide = i)
-  
-  t1 = Sys.time()
-  dummy = posterior_mean(data)
-  t2 = Sys.time()
-  dummy = multi_t_test(data) 
-  t3 = Sys.time()
-  #dummy = multi_posterior_mean(data)
-  t4 = Sys.time()
-  
-   res4 = bind_rows(
-     res4, 
-     tibble('Nb_peptide' = i, 
-            'Time_t_test' = (t2 - t1) %>% round(2),
-            'Time' = (t3 - t2) %>% round(2),
-            'Time_multi' = (t4 - t3) %>% round(2))
-     ) 
+
+floop = function(n){
+  tib = c()
+  for(i in c(10, 100, 1000)){
+    
+    data = simu_data(nb_peptide = i)
+    
+    t1 = Sys.time()
+    dummy = posterior_mean(data)
+    t2 = Sys.time()
+    dummy = multi_t_test(data) 
+    t3 = Sys.time()
+    dummy = multi_posterior_mean(data)
+    t4 = Sys.time()
+    
+    ## Prepare all the DAPAR nonsense formatting
+    qdata <- data %>% 
+      select(-Mean) %>% 
+      unite(col = "Cond_Rep", c(Group,Sample), sep = "_") %>% 
+      spread(key = "Cond_Rep", value = "Output") %>%  
+      column_to_rownames(var = "Peptide") 
+    
+    metadata <- data.frame(Sample.name = colnames(qdata)) %>% 
+      separate(Sample.name, sep = "_", into = c("Condition",NA), remove = F) %>% 
+      mutate(Bio.Rep = 1:ncol(qdata))
+    
+    t5 = Sys.time()
+    dummy = DAPAR::limmaCompleteTest(qData = as.matrix(qdata),
+                                     sTab = metadata,
+                                     comp.type = "OnevsOne")
+    t6 = Sys.time()
+
+    
+    tib = bind_rows(
+      tib, 
+      tibble('Nb_peptide' = i, 
+             'Time_t_test' = (t2 - t1),
+             'Time' = (t3 - t2),
+             'Time_multi' = (t4 - t3), 
+             'Time_lima' = (t6 - t5))
+    ) 
+  }
+  return(tib)
 }
+res4 = lapply(1:10, floop) %>%
+  bind_rows() %>%
+  group_by(Nb_peptide) %>% 
+  summarise(across(everything(), list(mean = mean, sd = sd)))
+  
 
 ## Experiment 5: Evaluation of the uncertainty bias coming from imputation 
 
