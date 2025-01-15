@@ -82,41 +82,6 @@ eval <- function(
     mutate(Output = if_else(Missing == 1, Average, Output)) %>% 
     dplyr::select(- c(Missing, Average))
   
-  # Note, limma and DAPAR use data in wide format.
-  db_limma <- db %>% 
-    select(-Mean) %>% 
-    # Merge Group and Sample columns to denote biological samples analysed
-    unite(col = "Cond_Rep", c(Group,Sample), sep = "_") %>% 
-    # Reshape data in wide format
-    spread(key = "Cond_Rep", value = "Output")
-  
-  ## Create quantitative data matrix to match DAPAR requirements
-  qdata <- db_limma %>%  
-    column_to_rownames(var = "Peptide") 
-  
-  ## Create design dataframe to match DAPAR requirements
-  metadata <- data.frame(Sample.name = colnames(qdata)) %>% 
-    separate(Sample.name, sep = "_", into = c("Condition",NA), remove = F) %>% 
-    mutate(Bio.Rep = 1:ncol(qdata))
-  
-  qdata <- qdata %>% 
-    select(metadata$Sample.name)
-  
-  ## Moderated t-test - OnevsOne setting
-  res_limma <- DAPAR::limmaCompleteTest(qData = as.matrix(qdata),
-                                        sTab = metadata,
-                                        comp.type = "OnevsOne")
-  
-  P_Value <- res_limma$P_Value %>%
-    rownames_to_column(var = "Peptide") %>%
-    pivot_longer(-Peptide,
-                 names_to = "Comparison",
-                 values_to = "LM_p_value") %>%
-    separate(col = Comparison,
-             into = c("Group", NA, "Group2", NA),
-             sep = "_") %>%
-    mutate(LM_Signif = LM_p_value < alpha)
-  
   res = db %>%
     posterior_mean(mu_0 = mu_0, lambda_0 = lambda_0,
                    alpha_0 = alpha_0, beta_0 = beta_0) %>%
@@ -195,6 +160,46 @@ multi_t_test <- function(data){
     mutate(across(c(Group, Group2), .fns = as.character)) %>% 
     return()
 }
+
+multi_limma <- function(data){
+  # Note, limma and DAPAR use data in wide format.
+  db_limma <- data %>% 
+    # Merge Group and Sample columns to denote biological samples analysed
+    unite(col = "Cond_Rep", c(Group,Sample), sep = "_") %>% 
+    # Reshape data in wide format
+    spread(key = "Cond_Rep", value = "Output")
+  
+  ## Create quantitative data matrix to match DAPAR requirements
+  qdata <- db_limma %>%  
+    column_to_rownames(var = "Peptide") 
+  
+  ## Create design dataframe to match DAPAR requirements
+  metadata <- data.frame(Sample.name = colnames(qdata)) %>% 
+    separate(Sample.name, sep = "_", into = c("Condition",NA), remove = F) %>% 
+    mutate(Bio.Rep = 1:ncol(qdata))
+  
+  qdata <- qdata %>% 
+    select(metadata$Sample.name)
+  
+  ## Moderated t-test - OnevsOne setting
+  res_limma <- DAPAR::limmaCompleteTest(qData = as.matrix(qdata),
+                                        sTab = metadata,
+                                        comp.type = "OnevsOne")
+  
+  P_Value <- res_limma$P_Value %>%
+    rownames_to_column(var = "Peptide") %>%
+    pivot_longer(-Peptide,
+                 names_to = "Comparison",
+                 values_to = "LM_p_value") %>%
+    separate(col = Comparison,
+             into = c("Group", NA, "Group2", NA),
+             sep = "_")
+  
+  return(P_Value)
+}
+
+limma_test <- simu_db() %>% 
+  multi_limma()
 
 ci_coverage <- function(
     posterior,
