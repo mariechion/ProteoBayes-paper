@@ -65,6 +65,7 @@ eval <- function(
     t_test = FALSE,
     limma = FALSE,
     missing_ratio = 0,
+    imputation = F,
     alpha = 0.05,
     mu_0 = NULL,
     lambda_0,
@@ -77,12 +78,25 @@ eval <- function(
     list_mean_diff = list_mean_diff,
     list_var = list_var,
     list_cov = list_cov,
-    multivariate = multivariate) %>% 
-    group_by(Peptide, Group) %>% 
-    mutate(Average = mean(Output)) %>% 
-    mutate(Missing = rbinom(1, 1, missing_ratio)) %>% 
-    mutate(Output = if_else(Missing == 1, Average, Output)) %>% 
-    dplyr::select(- c(Missing, Average))
+    multivariate = multivariate) 
+  
+    if(imputation){
+      db = db %>% 
+        group_by(Peptide, Group) %>% 
+        mutate(Average = mean(Output)) %>% 
+        mutate(Missing = rbinom(nb_sample, 1, missing_ratio)) %>% 
+        mutate(Output = if_else(Missing == 1, Average, Output)) %>% 
+        dplyr::select(- c(Missing, Average)) %>% 
+        ungroup()
+    } else
+    {
+      db = db %>% 
+        group_by(Peptide, Sample) %>% 
+        mutate(Missing = rbinom(1, 1, missing_ratio)) %>% 
+        dplyr::filter(Missing == 0) %>% 
+        dplyr::select(- c(Missing)) %>% 
+        ungroup()
+    }
   
   res = db %>%
     posterior_mean(mu_0 = mu_0, lambda_0 = lambda_0,
@@ -136,24 +150,16 @@ eval <- function(
 summarise_eval <- function(eval){
   eval %>%
     group_by(Group, Group2, Multivariate) %>%
-    summarise(across(c(MSE, CIC, Diff_mean, CI_width, Distinct,
-                       p_value, Signif, LM_p_value, LM_Signif),
+    summarise(across(where(is.double),
                      .fns = list('Mean' = mean, 'Sd' = sd)),
                      .groups = 'drop') %>%
     mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd)) %>%
-    mutate(across(MSE_Mean:LM_Signif_Sd, ~ round(.x, 2))) %>%
-    reframe(Group, Group2, Multivariate,
-            'Diff_mean' =  paste0(Diff_mean_Mean, ' (', Diff_mean_Sd, ')'),
-            'CI_width' =  paste0(CI_width_Mean, ' (', CI_width_Sd, ')'),
-            'RMSE' = paste0(MSE_Mean, ' (', MSE_Sd, ')'),
-            'CIC' =  paste0(CIC_Mean, ' (', CIC_Sd, ')'),
-            'Distinct' =  paste0(Distinct_Mean*100, ' (', Distinct_Sd*100, ')'),
-            'p_value' =  paste0(p_value_Mean, ' (', p_value_Sd, ')'),
-            'LM_p_value' =  paste0(LM_p_value_Mean, ' (', LM_p_value_Sd, ')')) %>%
+    mutate(across(where(is.double), ~ round(.x, 2))) %>%
     return()
 }
 
 multi_t_test <- function(data){
+  
   data %>%
     tidyr::expand_grid('Group2' = unique(Group)) %>%
     dplyr::left_join(
@@ -164,7 +170,8 @@ multi_t_test <- function(data){
       by = c("Peptide", 'Group2', 'Sample')) %>%
     dplyr::filter(Group == 1, Group2 != 1) %>%
     dplyr::group_by(Peptide, Group, Group2) %>%
-    dplyr::reframe('p_value' = t.test(Output, Output2)$p.value,
+    dplyr::reframe('p_value' = tryCatch(t.test(Output,Output2)$p.value,
+                                      error = function(e){return(NA)}),
                    'Signif' = (p_value < 0.05))  %>% 
     mutate(across(c(Group, Group2), .fns = as.character)) %>% 
     return()
@@ -341,18 +348,61 @@ res4 = lapply(1:10, floop) %>%
   
 ## Experiment 5: Evaluation of the uncertainty bias coming from imputation 
 
-res5 = eval(
-  nb_peptide = 1000,
-  nb_sample = 100,
-  list_mean_diff = c(0, 1),
-  list_var = c(1, 1),
-  multivariate = FALSE,
-  missing_ratio = 0.8
-)
 
-sum_res5 = summarise_eval(res5)
+floop2 = function(i)
+{
+  no_imput = eval(
+    nb_peptide = 10000,
+    nb_sample = 10,
+    list_mean_diff = c(0, 1),
+    list_var = c(1, 1),
+    multivariate = FALSE,
+    imputation = F,
+    missing_ratio = i, 
+    t_test = T,
+    lambda_0 = 1e-10,
+    alpha_0 = 0.01, 
+    beta_0 = 0.3
+  ) %>% 
+    mutate(Missing_ratio = i) %>% 
+    mutate(Imputation = F)
+  
+  imput = eval(
+    nb_peptide = 10000,
+    nb_sample = 10,
+    list_mean_diff = c(0, 1),
+    list_var = c(1, 1),
+    multivariate = FALSE,
+    imputation = T,
+    missing_ratio = i, 
+    t_test = T,
+    lambda_0 = 1e-10,
+    alpha_0 = 0.01, 
+    beta_0 = 0.3
+  ) %>% 
+    mutate(Missing_ratio = i) %>% 
+    mutate(Imputation = T)
+  
+  
+  no_imput %>% 
+    bind_rows(imput) %>% 
+    return()
+}
+res5 = c(0, 0.2, 0.5, 0.8) %>% 
+  lapply(floop2) %>% 
+  bind_rows()
 
+sum_res5 = res5 %>%
+  drop_na() %>% 
+  dplyr::select(MSE:Imputation) %>% 
+  group_by(Missing_ratio, Imputation) %>%
+  summarise(across(where(is.double), 
+                   .fns = list('Mean' = mean, 'Sd' = sd)),
+            .groups = 'drop') %>%
+  mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd)) %>%
+  mutate(across(where(is.double), ~ round(.x, 2)))
 
+####
 #### GIF ProteoBayes visualisation ####
 set.seed(1)
 nb_sample = 5
@@ -595,3 +645,13 @@ ggplot(ci_valid) +
 #   scale_fill_gradientn(colors = c(rep("red",70),"green","blue"), 
 #                        limits = c(20,100)) +
 #   theme_minimal()
+#### Graph of results ####
+
+db_gg = sum_res5 %>%
+  dplyr::select(CIC_Mean, CIC_Sd, Imputation, Missing_ratio)
+
+ggplot(db_gg, aes(x = Missing_ratio, y = CIC_Mean, fill, col = Imputation)) +  
+  geom_point(position=position_dodge(0.05)) + 
+  geom_hline(yintercept = 95, linetype = 'dashed') +
+  ylim(0, 100) +
+  theme_classic()
