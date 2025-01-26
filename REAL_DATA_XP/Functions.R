@@ -190,11 +190,11 @@ CombineDA <- function(data, group_labels, fmol_labels, diff_str_id,
            True_log2FC = if_else(Truth, true = True_log2FC, false = 0)) %>%
     # Add ref mean
     left_join(ref_pept %>% select(Peptide, Protein, Group, Mean),
-              by = join_by(Peptide, Protein, Group2 == Group))
+              by = join_by(Peptide, Protein, Group == Group))
   
   db_eval <- db_results %>%
-    mutate('MSE' = (Mean - mu2)^2,
-           'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
+    mutate('MSE' = (Mean - mu)^2,
+           'CIC' = ((Mean > CI_inf) & (Mean < CI_sup)) * 100,
            'Diff_mean' = PB_log2FC,
            'Diff_LM' = LM_log2FC,
            'CI_width' = CI_sup - CI_inf,

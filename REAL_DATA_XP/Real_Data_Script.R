@@ -81,12 +81,18 @@ res_YST_B <- real_data_eval(data = db_YST_B, type = "YST_B",
                             FDR = FDR,
                             summary = F)
 
+write_csv(x = res_ARATH$results, file = "REAL_DATA_XP/Exp1_res_ARATH.csv")
+write_csv(x = res_YST$results, file = "REAL_DATA_XP/Exp1_res_YST.csv")
+write_csv(x = res_MOUSE$results, file = "REAL_DATA_XP/Exp1_res_MOUSE.csv")
+write_csv(x = res_YST_B$results, file = "REAL_DATA_XP/Exp1_res_YST_B.csv")
+
 ## Output mean difference comparison table
 
 bind_rows(
   res_YST$results %>% 
     group_by(True_diff_mean) %>% 
-    summarise(PB_log2FC_mean = round(mean(PB_log2FC, na.rm = T), digits = 2),
+    summarise(Count = n(),
+              PB_log2FC_mean = round(mean(PB_log2FC, na.rm = T), digits = 2),
               PB_log2FC_sd = round(sd(PB_log2FC, na.rm = T), digits = 2),
               LM_log2FC_mean = round(mean(LM_log2FC, na.rm = T), digits = 2),
               LM_log2FC_sd = round(sd(LM_log2FC, na.rm = T), digits = 2)) %>% 
@@ -96,7 +102,8 @@ bind_rows(
     mutate(Experiment = "Muller2016", .before = True_diff_mean),
   res_MOUSE$results %>% 
     group_by(True_diff_mean) %>% 
-    summarise(PB_log2FC_mean = round(mean(PB_log2FC, na.rm = T), digits = 2),
+    summarise(Count = n(),
+              PB_log2FC_mean = round(mean(PB_log2FC, na.rm = T), digits = 2),
               PB_log2FC_sd = round(sd(PB_log2FC, na.rm = T), digits = 2),
               LM_log2FC_mean = round(mean(LM_log2FC, na.rm = T), digits = 2),
               LM_log2FC_sd = round(sd(LM_log2FC, na.rm = T), digits = 2)) %>% 
@@ -106,7 +113,8 @@ bind_rows(
     mutate(Experiment = "Huang2020", .before = True_diff_mean),
   res_YST_B$results %>% 
     group_by(True_diff_mean) %>% 
-    summarise(PB_log2FC_mean = round(mean(PB_log2FC, na.rm = T), digits = 2),
+    summarise(Count = n(),
+              PB_log2FC_mean = round(mean(PB_log2FC, na.rm = T), digits = 2),
               PB_log2FC_sd = round(sd(PB_log2FC, na.rm = T), digits = 2),
               LM_log2FC_mean = round(mean(LM_log2FC, na.rm = T), digits = 2),
               LM_log2FC_sd = round(sd(LM_log2FC, na.rm = T), digits = 2)) %>% 
@@ -116,7 +124,8 @@ bind_rows(
     mutate(Experiment = "Bouyssie2020", .before = True_diff_mean),
   res_ARATH$results %>% 
     group_by(True_diff_mean) %>% 
-    summarise(PB_log2FC_mean = round(mean(PB_log2FC, na.rm = T), digits = 2),
+    summarise(Count = n(),
+              PB_log2FC_mean = round(mean(PB_log2FC, na.rm = T), digits = 2),
               PB_log2FC_sd = round(sd(PB_log2FC, na.rm = T), digits = 2),
               LM_log2FC_mean = round(mean(LM_log2FC, na.rm = T), digits = 2),
               LM_log2FC_sd = round(sd(LM_log2FC, na.rm = T), digits = 2)) %>% 
@@ -124,14 +133,14 @@ bind_rows(
            LM_Diff_Mean = paste0(LM_log2FC_mean," ", "(", LM_log2FC_sd, ")"),
            .keep = "unused") %>% 
     mutate(Experiment = "Chion2022", .before = True_diff_mean)
-) 
+) %>% write_csv(file = "REAL_DATA_XP/Exp1_summary.csv")
 
 
 
 # Experiment 2 : Evaluation of ProteoBayes performance
-prop_NA = 0.2
+prop_NA = 1
 multi = F
-source("REAL_DATA_XP/Functions.R")
+
 set.seed(17)
 
 res_PB_ARATH <- real_data_eval(data = db_ARATH, type = "ARATH", 
@@ -188,12 +197,16 @@ res_PB_YST_B <- real_data_eval(data = db_YST_B, type = "YST_B",
                                FDR = FDR, 
                                summary = F)
 
+write_csv(x = res_PB_ARATH$results, file = "REAL_DATA_XP/Exp2_res_ARATH.csv")
+write_csv(x = res_PB_YST$results, file = "REAL_DATA_XP/Exp2_res_YST.csv")
+write_csv(x = res_PB_MOUSE$results, file = "REAL_DATA_XP/Exp2_res_MOUSE.csv")
+write_csv(x = res_PB_YST_B$results, file = "REAL_DATA_XP/Exp2_res_YST_B.csv")
 
 ## Output ProteoBayes Evaluation table
 
 res_Mean1 <- bind_rows(
   res_PB_YST$results %>% 
-    # filter(!is.na(Distinct)) %>% 
+    filter(!is.na(Distinct)) %>% 
     group_by(True_diff_mean) %>% 
     summarise(MSE_mean = round(mean(sqrt(MSE), na.rm = T), digits = 2),
               MSE_sd = round(sd(sqrt(MSE), na.rm = T), digits = 2),
@@ -241,7 +254,7 @@ res_Mean1 <- bind_rows(
            .keep = "unused") %>% 
     mutate(Experiment = "Chion2022", .before = True_diff_mean)
 ) %>% filter(!is.na(True_diff_mean)) %>% 
-  rename("True" = "True_diff_mean") %>%  view()
+  rename("True" = "True_diff_mean") %>%  write_csv(file = "REAL_DATA_XP/Exp2_summary.csv")
 
 
 # Check results for Bouyssie2020 using ProteoBayes native functions
