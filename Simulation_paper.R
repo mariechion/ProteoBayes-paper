@@ -676,10 +676,10 @@ gg1 = ggplot(full_res, aes(x = True, y = CIC, col = Experiment, shape = Experime
 
 gg2 = ggplot(full_res, aes(x = True, y = RMSE, col = Experiment, shape = Experiment))+  
   geom_point(position=position_dodge(0.05)) + 
-  xlab('Effect size') + ylab('RMSE') +
+  xlab('Mean difference') + ylab('RMSE') +
   scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5)) +
   theme_classic()
 
 
-ggsave('FIGURES/CIC_all_exp.png', gg1, width = 5, height = 4, dpi = 600)
+ggsave('FIGURES/CIC_all_exp.png', gg1, width = 4, height = 3, dpi = 600)
 
