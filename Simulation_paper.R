@@ -66,7 +66,6 @@ eval <- function(
     limma = FALSE,
     missing_ratio = 0,
     imputation = F,
-    alpha = 0.05,
     mu_0 = NULL,
     lambda_0,
     beta_0,
@@ -117,7 +116,8 @@ eval <- function(
   if(multivariate){
     res = res %>%
       bind_rows(
-        db %>% multi_posterior_mean() %>% 
+        db %>% multi_posterior_mean(mu_0 = mu_0, lambda_0 = lambda_0,
+                                    nu_0 = alpha_0, Sigma_0 = beta_0) %>% 
           identify_diff() %>%
           dplyr::filter(Group == 1) %>%
           left_join(db %>% select(c('Peptide', 'Group', 'Mean')) %>%
@@ -126,9 +126,11 @@ eval <- function(
                     by = c('Peptide', 'Group2')) %>%
           mutate('MSE' = (Mean - mu2)^2,
                  'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
-                 'Diff_mean' = mu2 - mu,
                  'CI_width' = CI_sup2 - CI_inf2,
-                 'Multivariate' = TRUE) 
+                 'Diff_mean' = mu2 - mu,
+                 'Multivariate' = TRUE, 
+                 'Group' = as.character(Group),
+                 'Group2' = as.character(Group2)) 
       )
   }
     
@@ -180,6 +182,7 @@ multi_t_test <- function(data){
 multi_limma <- function(data){
   # Note, limma and DAPAR use data in wide format.
   db_limma <- data %>% 
+    dplyr::select(-Mean) %>% 
     # Merge Group and Sample columns to denote biological samples analysed
     unite(col = "Cond_Rep", c(Group,Sample), sep = "_") %>% 
     # Reshape data in wide format
@@ -253,7 +256,8 @@ res1 = eval(
   list_mean_diff = c(0, 0, 1, 5, 10),
   list_var = c(1, 1, 1, 1, 1),
   lambda_0 = 1e-10,
-  alpha_0 = 0.01, beta_0 = 0.3
+  alpha_0 = 0.01, 
+  beta_0 = 0.3
   )
 
 summarise_eval(res1)
@@ -267,7 +271,8 @@ res2 = eval(
   list_mean_diff = c(0, 1, 1, 1, 1),
   list_var = c(1, 1, 5, 10, 20),
   lambda_0 = 1e-10,
-  alpha_0 = 0.01, beta_0 = 0.3
+  alpha_0 = 0.01,
+  beta_0 = 0.3
 )
 
 summarise_eval(res2)
@@ -277,14 +282,16 @@ summarise_eval(res2)
 set.seed(42)
 
 res3_loop = c()
-for(i in 1:100)
-{
+for(i in 1:1000){
   res3_10 = eval(
     nb_peptide = 10,
     nb_sample = 5,
     list_mean_diff = c(0, 1, 1, 1, 1),
     list_var = c(1, 1, 1, 10, 10),
-    list_cov = c(0, 0.1, 1 ,1,  10),
+    list_cov = c(0, 0.1, 1 , 1, 10),
+    lambda_0 = 1e-10,
+    alpha_0 = 10,
+    beta_0 = 10,
     multivariate = TRUE
   ) %>% 
     mutate("Nb_peptide" = 10)
@@ -295,6 +302,9 @@ for(i in 1:100)
     list_mean_diff = c(0, 1, 1, 1, 1),
     list_var = c(1, 1, 1, 10, 10),
     list_cov = c(0, 0.1, 1 ,1,  10),
+    lambda_0 = 1e-10,
+    alpha_0 = 100,
+    beta_0 = 100,
     multivariate = TRUE
   ) %>% 
     mutate("Nb_peptide" = 100)
@@ -304,19 +314,20 @@ for(i in 1:100)
     bind_rows(res3_100)
 }
 
-co = res3_loop %>% 
-  group_by(Peptide, Group, Group2, Multivariate, Nb_peptide) %>% 
-  summarise(across(c(MSE, CIC, CIC_width, Diff_mean, Distinct, p_value, Signif), 
+sum_res3 = res3_loop %>% 
+  group_by(Group, Group2, Multivariate, Nb_peptide) %>% 
+  summarise(across(c(Diff_mean, MSE, CIC, CI_width, Diff_mean), 
                  .fns = mean),
-            .groups= 'keep') %>% 
-  summarise_eval()
+            .groups= 'keep')
+
+#write_csv(sum_res3, 'Results_simu/comparison_uni_multi.csv')
 
 ## Experiment 4: Evaluation of running times
 set.seed(1)
 
 floop = function(n){
   tib = c()
-  for(i in c(10, 100, 1000)){
+  for(i in c(10, 100, 1000, 10000)){
     
     data = simu_data(nb_peptide = i)
     
@@ -333,8 +344,8 @@ floop = function(n){
     tib = bind_rows(
       tib, 
       tibble('Nb_peptide' = i, 
-             'Time_t_test' = (t2 - t1),
-             'Time' = (t3 - t2),
+             'Time' = (t2 - t1),
+             'Time_t_test' = (t3 - t2),
              'Time_multi' = (t4 - t3), 
              'Time_lima' = (t5 - t4))
     ) 
@@ -345,6 +356,8 @@ res4 = lapply(1:10, floop) %>%
   bind_rows() %>%
   group_by(Nb_peptide) %>% 
   summarise(across(everything(), list(mean = mean, sd = sd)))
+
+#write_csv(res4, 'running_time.csv')
   
 ## Experiment 5: Evaluation of the uncertainty bias coming from imputation 
 
@@ -360,6 +373,7 @@ floop2 = function(i)
     imputation = F,
     missing_ratio = i, 
     t_test = T,
+    limma = T,
     lambda_0 = 1e-10,
     alpha_0 = 0.01, 
     beta_0 = 0.3
@@ -376,6 +390,7 @@ floop2 = function(i)
     imputation = T,
     missing_ratio = i, 
     t_test = T,
+    limma = T,
     lambda_0 = 1e-10,
     alpha_0 = 0.01, 
     beta_0 = 0.3
@@ -647,11 +662,24 @@ ggplot(ci_valid) +
 #   theme_minimal()
 #### Graph of results ####
 
-db_gg = sum_res5 %>%
-  dplyr::select(CIC_Mean, CIC_Sd, Imputation, Missing_ratio)
+full_res = read_csv("REAL_DATA_XP/Exp2_summary.csv") %>%
+  separate(RMSE, c('RMSE', NA), " ") %>%
+  separate(CIC, c('CIC', NA), " ") %>% 
+  mutate(True = - True, RMSE = as.numeric(RMSE), CIC = as.numeric(CIC))
 
-ggplot(db_gg, aes(x = Missing_ratio, y = CIC_Mean, fill, col = Imputation)) +  
+gg1 = ggplot(full_res, aes(x = True, y = CIC, col = Experiment, shape = Experiment)) +  
   geom_point(position=position_dodge(0.05)) + 
   geom_hline(yintercept = 95, linetype = 'dashed') +
-  ylim(0, 100) +
+  ylim(0, 100) + xlab('Mean difference') + ylab('95% Credible Interval Coverage') +
+  scale_y_continuous(breaks = c(0, 25, 50, 75, 95, 100), limits = c(0,100)) +
   theme_classic()
+
+gg2 = ggplot(full_res, aes(x = True, y = RMSE, col = Experiment, shape = Experiment))+  
+  geom_point(position=position_dodge(0.05)) + 
+  xlab('Effect size') + ylab('RMSE') +
+  scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5)) +
+  theme_classic()
+
+
+ggsave('FIGURES/CIC_all_exp.png', gg1, width = 5, height = 4, dpi = 600)
+
