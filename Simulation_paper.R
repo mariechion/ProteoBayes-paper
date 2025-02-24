@@ -11,7 +11,6 @@ simu_data = function(
     nb_sample = 5,
     list_mean_diff = c(0, 1, 5, 10),
     list_var = c(1, 1, 1, 1),
-    list_cov = c(0.1, 0.1, 0.1, 0.1),
     range_peptide = c(0, 50), 
     multivariate = FALSE){
   
@@ -36,7 +35,7 @@ simu_data = function(
           nb_sample,
           rep(0, nb_peptide), 
           diag(list_var[Group], nb_peptide) +
-            matrix(list_cov[Group], nrow = nb_peptide, ncol = nb_peptide)
+          rWishart(1, nb_peptide,diag(nb_peptide))[,, 1]
           ) %>% as.vector()
       ) %>%
       ungroup() 
@@ -60,12 +59,11 @@ eval <- function(
     nb_sample = 5,
     list_mean_diff = c(0, 1, 5, 10),
     list_var = c(1, 1, 1, 1),
-    list_cov = c(0.1, 0.1, 0.1, 0.1),
     multivariate = FALSE,
     t_test = FALSE,
     limma = FALSE,
     missing_ratio = 0,
-    imputation = F,
+    imputation = FALSE,
     mu_0 = NULL,
     lambda_0,
     beta_0,
@@ -76,7 +74,6 @@ eval <- function(
     nb_sample = nb_sample,
     list_mean_diff = list_mean_diff,
     list_var = list_var,
-    list_cov = list_cov,
     multivariate = multivariate) 
   
     if(imputation){
@@ -282,13 +279,12 @@ summarise_eval(res2)
 set.seed(42)
 
 res3_loop = c()
-for(i in 1:1000){
+for(i in 1:100){
   res3_10 = eval(
     nb_peptide = 10,
-    nb_sample = 5,
-    list_mean_diff = c(0, 1, 1, 1, 1),
-    list_var = c(1, 1, 1, 10, 10),
-    list_cov = c(0, 0.1, 1 , 1, 10),
+    nb_sample = 100,
+    list_mean_diff = c(0, 1, 1),
+    list_var = c(1, 1, 10),
     lambda_0 = 1e-10,
     alpha_0 = 10,
     beta_0 = 10,
@@ -296,22 +292,21 @@ for(i in 1:1000){
   ) %>% 
     mutate("Nb_peptide" = 10)
   
-  res3_100 = eval(
-    nb_peptide = 100,
-    nb_sample = 5,
-    list_mean_diff = c(0, 1, 1, 1, 1),
-    list_var = c(1, 1, 1, 10, 10),
-    list_cov = c(0, 0.1, 1 ,1,  10),
-    lambda_0 = 1e-10,
-    alpha_0 = 100,
-    beta_0 = 100,
-    multivariate = TRUE
-  ) %>% 
-    mutate("Nb_peptide" = 100)
-  
+  # res3_100 = eval(
+  #   nb_peptide = 100,
+  #   nb_sample = 5,
+  #   list_mean_diff = c(0, 1, 1, 1, 1),
+  #   list_var = c(1, 1, 1, 10, 10),
+  #   lambda_0 = 1e-10,
+  #   alpha_0 = 100,
+  #   beta_0 = 100,
+  #   multivariate = TRUE
+  # ) %>% 
+  #   mutate("Nb_peptide" = 100)
+  # 
   res3_loop = res3_loop %>%
-    bind_rows(res3_10) %>%
-    bind_rows(res3_100)
+    bind_rows(res3_10) #%>%
+    # bind_rows(res3_100)
 }
 
 sum_res3 = res3_loop %>% 
@@ -321,6 +316,7 @@ sum_res3 = res3_loop %>%
             .groups= 'keep')
 
 #write_csv(sum_res3, 'Results_simu/comparison_uni_multi.csv')
+sum_res3 = read_csv('Results_simu/comparison_uni_multi.csv')
 
 ## Experiment 4: Evaluation of running times
 set.seed(1)
@@ -667,14 +663,16 @@ full_res = read_csv("REAL_DATA_XP/Exp2_summary.csv") %>%
   separate(CIC, c('CIC', NA), " ") %>% 
   mutate(True = - True, RMSE = as.numeric(RMSE), CIC = as.numeric(CIC))
 
-gg1 = ggplot(full_res, aes(x = True, y = CIC, col = Experiment, shape = Experiment)) +  
+gg1 = ggplot(full_res,
+             aes(x = True, y = CIC, col = Experiment, shape = Experiment)) +  
   geom_point(position=position_dodge(0.05)) + 
   geom_hline(yintercept = 95, linetype = 'dashed') +
-  ylim(0, 100) + xlab('Mean difference') + ylab('95% Credible Interval Coverage') +
+  xlab('Mean difference') + ylab('95% Credible Interval Coverage') +
   scale_y_continuous(breaks = c(0, 25, 50, 75, 95, 100), limits = c(0,100)) +
   theme_classic()
 
-gg2 = ggplot(full_res, aes(x = True, y = RMSE, col = Experiment, shape = Experiment))+  
+gg2 = ggplot(full_res, 
+             aes(x = True, y = RMSE, col = Experiment, shape = Experiment))+  
   geom_point(position=position_dodge(0.05)) + 
   xlab('Mean difference') + ylab('RMSE') +
   scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5)) +
