@@ -169,17 +169,17 @@ CombineDA <- function(data, group_labels, fmol_labels, diff_str_id,
   # Merge result tables
   db_results <- PB_res %>%
     filter(Group2 == tail(group_labels, n=1)) %>%
-    # Add Protein Column
-    left_join(y = .,
-              x = data %>%
-                select(Peptide,Protein) %>%
-                distinct,
-              by = "Peptide") %>%
     # Add limma results
     left_join(y = LM_res %>%
                 filter(Group2 == tail(group_labels, n=1)) %>%
                 rename(LM_log2FC = log2FC),
-              by = join_by(Peptide, Group, Group2)) %>%
+              by = join_by(Peptide, Group, Group2)) %>% 
+    # Add Protein Column
+    left_join(y = data %>%
+                select(Peptide,Protein) %>%
+                distinct,
+               by = "Peptide") %>%
+    relocate(Protein, .after = "Peptide") %>%   
     # Add ground truth column
     mutate(Truth = if_else(str_detect(Protein, diff_str_id),
                            true = T, false = F)) %>%
@@ -204,21 +204,24 @@ CombineDA <- function(data, group_labels, fmol_labels, diff_str_id,
            "MSE_LMT" = (LM_log2FC - True_log2FC)^2) %>%
     mutate(True_diff_mean = round(True_log2FC, digits = 2),
            .after = 'Truth', .keep = "unused")
-  
+
   if (summary){
     db_eval <- db_eval %>%
-      group_by(Group, Group2, Truth) %>%
+      group_by(Group, Group2, Truth, True_diff_mean) %>%
       summarise(across(c(MSE, CIC, Diff_mean, Diff_LM,
                          pval, CI_width, Distinct, Signif,
                          MSE_PBT, MSE_LMT),
                        .fns = list('Mean' = ~mean(.x,na.rm = T),
                                    'Sd' = ~sd(.x,na.rm=T))),
+                PB_na = sum(is.na(PB_log2FC)),
+                LM_na = sum(is.na(pval)),
+                nb_pept = n(),
                 .groups = 'drop') %>%
       mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd),
              'MSE_PBT_Mean' = sqrt(MSE_PBT_Mean), 'MSE_PBT_Sd' = sqrt(MSE_PBT_Sd),
              'MSE_LMT_Mean' = sqrt(MSE_LMT_Mean), 'MSE_LMT_Sd' = sqrt(MSE_LMT_Sd)) %>%
       mutate(across(MSE_Mean:MSE_LMT_Sd, ~ round(.x, 2))) %>%
-      reframe(Group, Group2, Truth,
+      reframe(Group, Group2, Truth, True_diff_mean, nb_pept, PB_na, LM_na,
               'PB_diff_mean' =  paste0(Diff_mean_Mean, ' (', Diff_mean_Sd, ')'),
               'CI_width' =  paste0(CI_width_Mean, ' (', CI_width_Sd, ')'),
               'Distinct' = paste0(Distinct_Mean, ' (', Distinct_Sd, ')'),
@@ -228,19 +231,10 @@ CombineDA <- function(data, group_labels, fmol_labels, diff_str_id,
               'RMSE' = paste0(MSE_Mean, ' (', MSE_Sd, ')'),
               'CIC' =  paste0(CIC_Mean, ' (', CIC_Sd, ')'),
               'RMSE_PBtoT' = paste0(MSE_PBT_Mean, ' (', MSE_PBT_Sd, ')'),
-              'RMSE_LMtoT' = paste0(MSE_LMT_Mean, ' (', MSE_LMT_Sd, ')')) 
+              'RMSE_LMtoT' = paste0(MSE_LMT_Mean, ' (', MSE_LMT_Sd, ')'))
   }
   
   return(db_eval)  
-  
-  # return(list(DiffAna = db_eval %>%
-  #               select(Group, Group2, Truth, Distinct, Signif),
-  #             DiffMean = db_eval %>%
-  #               select(Group, Group2, Truth,
-  #                      True_diff_mean, PB_diff_mean, CI_width, LM_diff_mean,
-  #                      RMSE_PBtoT, RMSE_LMtoT),
-  #             EstimQual = db_eval %>%
-  #               select(Group, Group2, Truth, True_diff_mean, RMSE, CIC)))
 }
 
 real_data_eval <- function(data, type, maxquant = T, normalize,
