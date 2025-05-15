@@ -7,7 +7,7 @@ library(tidyverse)
 library(grid)
 `%notin%` <- Negate(`%in%`)
 
-options(shiny.maxRequestSize = 30 * 1024^2) 
+options(shiny.maxRequestSize = 50 * 1024^2) 
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
