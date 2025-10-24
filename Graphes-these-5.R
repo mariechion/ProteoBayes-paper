@@ -1,7 +1,10 @@
+ library(tidyverse)
+library(ProteoBayes)
+ 
 load("Arabido_raw_data_lg")
 load("Arabido_imp_data_lg")
 
-source("bayes_proteo.R")
+# source("bayes_proteo.R")
 
 pept_ups = "AALEELVK"
 pept_arath = "EVQELAQEAAER"
@@ -10,10 +13,13 @@ pept_arath = "EVQELAQEAAER"
 
 db_prot_ups = data.lg %>% 
   dplyr::rename(Draw = Imp.Draw, Output = Intensity) %>% 
-  filter(Protein == "P12081ups|SYHC_HUMAN_UPS") %>% drop_na()
+  filter(Protein == "P12081ups|SYHC_HUMAN_UPS") %>% 
+  drop_na()
+
 db_prot_arath = data.lg  %>% 
   dplyr::rename(Draw = Imp.Draw, Output = Intensity) %>%
-  filter(Protein == "sp|F4I893|ILA_ARATH") %>% drop_na()
+  filter(Protein == "sp|F4I893|ILA_ARATH") %>%
+   drop_na()
 
 ## Graph comparison with and without correlations
 dim_prot_ups = db_prot_ups$ID %>% n_distinct()
@@ -71,3 +77,25 @@ png('FIGURES/ch5_graph5.png', res = 600, width = 6400, height = 3600, units = "p
 cowplot::plot_grid(gg5_1, gg5_3, gg5_5, gg5_7, gg5_9,
                    gg5_2, gg5_4, gg5_6, gg5_8, nrow = 3, ncol = 3)
 dev.off()
+
+#### New version of multivariate ProteoBayes ####
+
+db = db_prot_ups %>%
+  select(-Protein) %>%
+  rename(Peptide = ID) %>% 
+  mutate(Peptide = substr(Peptide, 1, 4)) %>% 
+  mutate(Group = substr(Group, 6, 7)) %>% 
+  filter(Group %in% c("1", "4", "7"))
+
+post_arath = multi_posterior_mean(
+  data = db, 
+  mu_0 = NULL,
+  lambda_0 = 1,
+  nu_0 = 10)
+
+diff = multi_identify_diff(post_arath)
+
+gg = plot_multi_diff(diff)
+
+ggsave("FIGURES/multi_diff_diff.png", gg,
+       dpi = 600, width = 6, height = 6)

@@ -1,7 +1,10 @@
 library(tidyverse)
 library(ProteoBayes)
 library(gganimate)
-library(DAPAR)
+library(mvtnorm)
+library(patchwork) # pour assembler les graphiques
+
+# library(DAPAR)
 
 #### Useful functions#####
 
@@ -145,6 +148,97 @@ eval <- function(
 
   return(res)
 }
+
+eval_multi <- function(
+    mean_ref, 
+    cov_ref,
+    mean_compare,
+    cov_compare,
+    lambda_0,
+    nu_0,
+    sigma_0 = NULL,
+    nb_rep = 100,
+    nb_sample = 5){
+  
+res = tibble(mean_diff = c(), 
+             MSE = c(), 
+             CI_coverage = c()
+            )
+  
+for(i in 1:nb_rep)
+{
+  ## Generate reference dataset
+  db_ref = mvtnorm::rmvnorm(nb_sample, mean = mean_ref, sigma = cov_ref) %>% 
+    as_tibble() %>%
+    rename('Peptide_1' = V1,
+           'Peptide_2' = V2,
+           'Peptide_3' = V3) %>%
+    mutate(Sample = row_number()) %>% 
+    pivot_longer(-Sample, names_to = 'Peptide', values_to = 'Output') %>%
+    mutate('Group' = 0)
+
+  db_compare = mvtnorm::rmvnorm(
+      nb_sample,
+      mean = mean_compare,
+      sigma = cov_compare) %>% 
+    as_tibble() %>%
+    rename('Peptide_1' = V1,
+           'Peptide_2' = V2,
+           'Peptide_3' = V3) %>%
+    mutate(Sample = row_number()) %>% 
+    pivot_longer(-Sample, names_to = 'Peptide', values_to = 'Output')  %>%
+    mutate('Group' = 1) %>%
+    bind_rows(db_ref)
+
+  post = multi_posterior_mean(db_compare, lambda_0 = lambda_0, nu_0 = nu_0, Sigma_0 = sigma_0) 
+
+  mean_diff = post %>%
+    multi_identify_diff(plot = FALSE) %>% 
+    pluck('Diff_mean') %>%
+    dplyr::filter(Group == 0, Group2 != 0) %>%
+    pull(Diff_mean) %>%
+    mean()
+
+  mse = post %>%
+    multi_identify_diff(plot = FALSE) %>% 
+    pluck('Diff_mean') %>%
+    dplyr::filter(Group == 0, Group2 != 0) %>%
+    pull(Mean) %>%
+    `^`(2) %>%
+    mean() 
+
+  ## Compute the posterior covariance matrix for the reference group
+  dim = n_distinct(post$Peptide)   
+    
+  post_mean_ref = post %>%
+    filter(Group == 0) %>% 
+    pull(mu) %>%
+    unique()
+
+  post_cov_ref = post %>%
+    filter(Group == 0) %>% 
+    mutate(Cov = Sigma / (lambda * (nu - dim + 1 ) ) ) %>%
+    pull(Cov) %>%
+    matrix(nrow = dim, ncol = dim)
+   
+  ## Compute the 95% credible interval coverage for the reference group
+  is_in_CI = multi_CI(
+    data = mean_ref,
+    mean = post_mean_ref,
+    cov = post_cov_ref,
+    df = (unique(post$nu) - dim + 1) ) %>%  
+    as.vector()
+
+  res = res %>%
+    bind_rows(
+      tibble('mean_diff' = mean_diff,
+             'MSE' = mse,
+             'CI_coverage' = is_in_CI * 100)
+    )
+  }
+
+  return(res)
+} 
 
 summarise_eval <- function(eval){
   eval %>%
@@ -413,6 +507,52 @@ sum_res5 = res5 %>%
   mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd)) %>%
   mutate(across(where(is.double), ~ round(.x, 2)))
 
+## Experiment 6: Evaluation of the effect size and uncertainty quantification in the multivariate case
+
+set.seed(42)
+
+mean_0 = c(0, 0, 0)
+mean_1 = c(1, 1, 1)
+mean_10 = c(10, 10, 10)
+
+cov_1 = diag(c(1,1,1))
+cov = matrix(c(1, 0.7, 0.2, 0.7, 1, 0.5, 0.2, 0.5, 1) , nrow = 3, ncol = 3)
+cov_high = matrix(c(10, 0.7, 0.2, 0.7, 10, 0.5, 0.2, 0.5, 10) , nrow = 3, ncol = 3)
+
+list_compare = list(
+  'Mean_1_Cov_diag' = list(mean_1,  cov_1),
+  'Mean_1_Cov_correlated' = list(mean_1, cov),
+  'Mean_10_Cov_correlated' = list(mean_10, cov),
+  'Mean_1_Cov_high_correlated' = list(mean_1, cov_high)
+)
+
+res = tibble(mean_diff = c(), MSE = c(), CI_coverage = c())
+
+for(i in names(list_compare)){
+  res = eval_multi(
+    mean_ref = mean_0,
+    cov_ref = cov,
+    mean_compare = list_compare[[i]][[1]],
+    cov_compare = list_compare[[i]][[2]],
+    lambda_0 = 1e-10,
+    nu_0 = 3,
+    nb_rep = 1000,
+    nb_sample = 5
+  ) %>%
+  mutate(
+    'Distrib_compare' = i) %>% 
+  bind_rows(res)
+}
+
+sum_res = res %>% group_by(Distrib_compare) %>%
+  summarise(across(where(is.double), 
+                   .fns = list('Mean' = mean, 'Sd' = sd)),
+            .groups = 'drop') %>%
+  mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd)) %>%
+  mutate(across(where(is.double), ~ round(.x, 4)))
+
+# write_csv(sum_res, 'Results_simu/summary_multivariate_simu_evaluation.csv')
+
 ####
 #### GIF ProteoBayes visualisation ####
 set.seed(1)
@@ -678,6 +818,79 @@ gg2 = ggplot(full_res,
   scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5)) +
   theme_classic()
 
+  ggsave('FIGURES/CIC_all_exp.png', gg1, width = 4, height = 3, dpi = 600)
 
-ggsave('FIGURES/CIC_all_exp.png', gg1, width = 4, height = 3, dpi = 600)
+#### Illustration multivariate inference ####
+
+
+
+# --- Paramètres (modifie ici) ---
+mu1    <- c(0, 0)
+Sigma1 <- matrix(c(1.0, 0.6, 0.6, 1.2), 2)
+mu2    <- c(1.8, 1.0)
+Sigma2 <- matrix(c(1.0,-0.4,-0.4, 0.8), 2)
+probs  <- seq(0.25, 0.95, length.out = 5)     # 5 niveaux d'ellipses
+levs   <- qchisq(probs, df = 2)
+
+# --- Grille 2D + densités ---
+rngx <- range(mu1[1] + c(-4,4)*sqrt(Sigma1[1,1]), mu2[1] + c(-4,4)*sqrt(Sigma2[1,1]))
+rngy <- range(mu1[2] + c(-4,4)*sqrt(Sigma1[2,2]), mu2[2] + c(-4,4)*sqrt(Sigma2[2,2]))
+x <- seq(rngx[1], rngx[2], length.out = 220)
+y <- seq(rngy[1], rngy[2], length.out = 220)
+G <- expand.grid(x = x, y = y)
+X <- cbind(as.numeric(G$x), as.numeric(G$y))
+G$d21 <- mahalanobis(X, mu1, Sigma1)
+G$d22 <- mahalanobis(X, mu2, Sigma2)
+G$f1  <- dmvnorm(X, mean = mu1, sigma = Sigma1)
+G$f2  <- dmvnorm(X, mean = mu2, sigma = Sigma2)
+G$fo  <- pmin(G$f1, G$f2)
+
+# --- Panneau central ---
+p_main <- ggplot(G, aes(x, y)) +
+  geom_contour(aes(z = d21), breaks = levs, linewidth = 0.4, col = '#366bd5ff') +
+  geom_contour(aes(z = d22), breaks = levs, linetype = "dashed", col = 'black') +
+  geom_point(data = data.frame(x = mu1[1], y = mu1[2]), size = 2, col = '#366bd5ff') +
+  geom_point(data = data.frame(x = mu2[1], y = mu2[2]), size = 2) +
+  coord_equal(xlim = rngx, ylim = rngy) +
+  labs(x = "x", y = "y") +
+  theme_classic()
+
+# --- Marginale X (haut) ---
+dx <- data.frame(x = x,
+                 g1 = dnorm(x, mu1[1], sqrt(Sigma1[1,1])),
+                 g2 = dnorm(x, mu2[1], sqrt(Sigma2[1,1])))
+p_top <- ggplot(dx, aes(x)) +
+  geom_ribbon(aes(ymin = 0, ymax = pmin(g1, g2)), alpha = 0.7, fill = "#F8B9C5") +
+  geom_line(aes(y = g1),  col = '#366bd5ff') +
+  geom_line(aes(y = g2), linetype = "dashed") +
+  coord_cartesian(xlim = rngx) +
+  theme_void() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        plot.margin = margin(0,0,2,0))
+
+# --- Marginale Y (gauche) ---
+dy <- data.frame(y = y,
+                 g1 = dnorm(y, mu1[2], sqrt(Sigma1[2,2])),
+                 g2 = dnorm(y, mu2[2], sqrt(Sigma2[2,2])))
+p_left <- ggplot(dy, aes(y = y)) +
+  geom_ribbon(aes(xmin = 0, xmax = pmin(g1, g2), y = y), alpha = 0.7,
+fill = "#F8B9C5", orientation = "y") +
+  geom_path(aes(x = g1, y = y),  col = '#366bd5ff') +
+  geom_path(aes(x = g2, y = y), linetype = "dashed") +
+  scale_x_reverse() +
+  coord_cartesian(ylim = rngy, xlim = c(0, 0.8)) +
+  theme_void() +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        plot.margin = margin(0,0,0,2))
+
+#  Placement précis
+#    - main : carré 85% x 85%
+#    - top  : bande supérieure 85% de largeur, 15% de hauteur
+#    - right: bande droite 15% de largeur, 85% de hauteur
+gg = ggdraw() +
+  draw_plot(p_left, 0.00, 0.10, 0.28, 0.75) +   # gauche
+  draw_plot(p_main, 0.15, 0.00, 0.85, 0.85) +   # centre
+  draw_plot(p_top,  0.35, 0.85, 0.50, 0.15)     # haut
+
+ggsave('FIGURES/multivariate_inference.png', gg, width = 7, height = 4, dpi = 600)
 
