@@ -1,0 +1,5 @@
+Distrib_compare,mean_diff_Mean,mean_diff_Sd,MSE_Mean,MSE_Sd,CI_coverage_Mean,CI_coverage_Sd
+Mean_10_Cov_correlated,-10.0001,0.1117,0.1411,0.1418,100,0
+Mean_1_Cov_correlated,-0.993,0.1055,0.1379,0.1303,100,0
+Mean_1_Cov_diag,-1.0023,0.0928,0.1354,0.1263,100,0
+Mean_1_Cov_high_correlated,-1.0053,0.1991,0.33,0.2938,100,0

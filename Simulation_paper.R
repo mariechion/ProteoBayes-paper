@@ -160,13 +160,12 @@ eval_multi <- function(
     nb_rep = 100,
     nb_sample = 5){
   
-res = tibble(mean_diff = c(), 
+  res = tibble(mean_diff = c(), 
              MSE = c(), 
              CI_coverage = c()
             )
-  
-for(i in 1:nb_rep)
-{
+  for(i in 1:nb_rep)
+  {
   ## Generate reference dataset
   db_ref = mvtnorm::rmvnorm(nb_sample, mean = mean_ref, sigma = cov_ref) %>% 
     as_tibble() %>%
@@ -190,22 +189,36 @@ for(i in 1:nb_rep)
     mutate('Group' = 1) %>%
     bind_rows(db_ref)
 
-  post = multi_posterior_mean(db_compare, lambda_0 = lambda_0, nu_0 = nu_0, Sigma_0 = sigma_0) 
+  # post = multi_posterior_mean(db_compare, lambda_0 = lambda_0, nu_0 = nu_0, Sigma_0 = sigma_0) 
+    post = posterior_mean(db_compare, lambda_0 = 1e-10, alpha_0 = 0.01, beta_0 = 0.3) 
 
-  mean_diff = post %>%
-    multi_identify_diff(plot = FALSE) %>% 
-    pluck('Diff_mean') %>%
-    dplyr::filter(Group == 0, Group2 != 0) %>%
+  # mean_diff = post %>%
+  #   multi_identify_diff(plot = FALSE) %>% 
+  #   pluck('Diff_mean') %>%
+  #   dplyr::filter(Group == 0, Group2 != 0) %>%
+  #   pull(Diff_mean) %>%
+  #   mean()
+
+  mean_diff = post %>% 
+    identify_diff() %>% 
+    filter(Group == 0) %>%
     pull(Diff_mean) %>%
     mean()
 
-  mse = post %>%
-    multi_identify_diff(plot = FALSE) %>% 
-    pluck('Diff_mean') %>%
-    dplyr::filter(Group == 0, Group2 != 0) %>%
-    pull(Mean) %>%
-    `^`(2) %>%
-    mean() 
+  # mse = post %>%
+  #   multi_identify_diff(plot = FALSE) %>% 
+  #   pluck('Diff_mean') %>%
+  #   dplyr::filter(Group == 0, Group2 != 0) %>%
+  #   pull(Mean) %>%
+  #   `^`(2) %>%
+  #   mean() 
+
+  mse = post %>% 
+    identify_diff() %>% 
+    dplyr::filter(Group == 0) %>% 
+    mutate('Squared_error' = (mean(mean_compare) + Diff_mean)^2) %>%
+    pull(Squared_error) %>%
+    mean()
 
   ## Compute the posterior covariance matrix for the reference group
   dim = n_distinct(post$Peptide)   
@@ -214,20 +227,33 @@ for(i in 1:nb_rep)
     filter(Group == 0) %>% 
     pull(mu) %>%
     unique()
+    
+  is_in_CI = post %>%
+      identify_diff() %>%
+      filter(Group == 0) %>%
+      mutate(
+        'CI_inf' = mean + sqrt(var) * qt(0.025, df),
+        'CI_sup' = mean + sqrt(var) * qt(0.975, df)
+      ) %>% 
+      mutate(
+        'is_in_CI' = (mean(mean_ref) >= CI_inf) & (mean(mean_ref) <= CI_sup)
+      ) %>%
+    pull(is_in_CI) %>%
+    min()
 
-  post_cov_ref = post %>%
-    filter(Group == 0) %>% 
-    mutate(Cov = Sigma / (lambda * (nu - dim + 1 ) ) ) %>%
-    pull(Cov) %>%
-    matrix(nrow = dim, ncol = dim)
+  # post_cov_ref = post %>%
+  #   filter(Group == 0) %>% 
+  #   mutate(Cov = Sigma / (lambda * (nu - dim + 1 ) ) ) %>%
+  #   pull(Cov) %>%
+  #   matrix(nrow = dim, ncol = dim)
    
-  ## Compute the 95% credible interval coverage for the reference group
-  is_in_CI = multi_CI(
-    data = mean_ref,
-    mean = post_mean_ref,
-    cov = post_cov_ref,
-    df = (unique(post$nu) - dim + 1) ) %>%  
-    as.vector()
+  # ## Compute the 95% credible interval coverage for the reference group
+  # is_in_CI = multi_CI(
+  #   data = mean_ref,
+  #   mean = post_mean_ref,
+  #   cov = post_cov_ref,
+  #   df = (unique(post$nu) - dim + 1) ) %>%  
+  #   as.vector()
 
   res = res %>%
     bind_rows(
@@ -338,7 +364,7 @@ ci_coverage <- function(
 }
 
 #### Simulation study  ####
-## Experiment 1: Evaluation of posteriors for different effect sizes
+#### Experiment 1: Evaluation of posteriors for different effect sizes ####
 set.seed(42)
 
 res1 = eval(
@@ -353,7 +379,7 @@ res1 = eval(
 
 summarise_eval(res1)
 
-## Experiment 2: Evaluation of posteriors for different variances 
+#### Experiment 2: Evaluation of posteriors for different variances ####
 set.seed(1)
 
 res2 = eval(
@@ -368,7 +394,7 @@ res2 = eval(
 
 summarise_eval(res2)
 
-## Experiment 3: Differences between univariate and multivariate versions
+#### Experiment 3: Differences between univariate and multivariate versions ####
 
 set.seed(42)
 
@@ -412,7 +438,7 @@ sum_res3 = res3_loop %>%
 #write_csv(sum_res3, 'Results_simu/comparison_uni_multi.csv')
 sum_res3 = read_csv('Results_simu/comparison_uni_multi.csv')
 
-## Experiment 4: Evaluation of running times
+#### Experiment 4: Evaluation of running times #####
 set.seed(1)
 
 floop = function(n){
@@ -449,7 +475,7 @@ res4 = lapply(1:10, floop) %>%
 
 #write_csv(res4, 'running_time.csv')
   
-## Experiment 5: Evaluation of the uncertainty bias coming from imputation 
+#### Experiment 5: Evaluation of the uncertainty bias coming from imputation ####
 
 
 floop2 = function(i)
@@ -507,7 +533,7 @@ sum_res5 = res5 %>%
   mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd)) %>%
   mutate(across(where(is.double), ~ round(.x, 2)))
 
-## Experiment 6: Evaluation of the effect size and uncertainty quantification in the multivariate case
+#### Experiment 6: Evaluation of the effect size and uncertainty quantification in the multivariate case ####
 
 set.seed(42)
 
@@ -536,8 +562,8 @@ for(i in names(list_compare)){
     cov_compare = list_compare[[i]][[2]],
     lambda_0 = 1e-10,
     nu_0 = 3,
-    nb_rep = 1000,
-    nb_sample = 5
+    nb_rep = 100,
+    nb_sample = 100
   ) %>%
   mutate(
     'Distrib_compare' = i) %>% 
@@ -551,7 +577,7 @@ sum_res = res %>% group_by(Distrib_compare) %>%
   mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd)) %>%
   mutate(across(where(is.double), ~ round(.x, 4)))
 
-# write_csv(sum_res, 'Results_simu/summary_multivariate_simu_evaluation.csv')
+# write_csv(sum_res, 'Results_simu/summary_uni_on_multi_simu_evaluation_100samples.csv')
 
 ####
 #### GIF ProteoBayes visualisation ####
