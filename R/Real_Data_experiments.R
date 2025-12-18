@@ -5,7 +5,7 @@ library(cp4p)
 library(DAPAR)
 
 # -- FUNCTIONS -- # 
-source("REAL_DATA_XP/Functions.R")
+source("Experiments/Real_data/utils.R")
 
 # -- REAL DATASETS -- #
 db_ARATH <- read.delim("REAL_DATA_XP/Arabido_UPS/peptides.txt")

@@ -1,3 +1,356 @@
+simu_data = function(
+    nb_peptide = 5,
+    nb_sample = 5,
+    list_mean_diff = c(0, 1, 5, 10),
+    list_var = c(1, 1, 1, 1),
+    range_peptide = c(0, 50), 
+    multivariate = FALSE){
+  
+  nb_group = length(list_mean_diff)
+  
+  
+  db = tibble(
+    'Peptide' = rep(paste0('Peptide_', 1:nb_peptide), each= nb_group*nb_sample),
+    'Group' = rep(rep(1:nb_group, each = nb_sample),nb_peptide),
+    'Sample' = rep(rep( 1:nb_sample, nb_group*nb_peptide))
+    ) 
+  if(multivariate){
+    db = db %>%
+      dplyr::group_by(Peptide) %>%
+      dplyr::mutate(
+        'Mean' = runif(1, range_peptide[1], range_peptide[2]) +
+          list_mean_diff[Group]) %>% 
+      arrange(Group) %>% 
+      group_by(Group) %>% 
+      dplyr::mutate(
+        'Output' = Mean + mvtnorm::rmvnorm(
+          nb_sample,
+          rep(0, nb_peptide), 
+          diag(list_var[Group], nb_peptide) +
+          rWishart(1, nb_peptide,diag(nb_peptide))[,, 1]
+          ) %>% as.vector()
+      ) %>%
+      ungroup() 
+  } else {
+    db = db %>%
+      dplyr::group_by(Peptide) %>%
+      dplyr::mutate(
+        'Mean' = runif(1, range_peptide[1], range_peptide[2]) +
+          list_mean_diff[Group],
+        'Output' = Mean + rnorm(n(), 0, list_var[Group])
+      ) %>%
+      ungroup() 
+  }
+  
+  return(db)
+}
+
+
+eval <- function(
+    nb_peptide = 5,
+    nb_sample = 5,
+    list_mean_diff = c(0, 1, 5, 10),
+    list_var = c(1, 1, 1, 1),
+    multivariate = FALSE,
+    t_test = FALSE,
+    limma = FALSE,
+    missing_ratio = 0,
+    imputation = FALSE,
+    mu_0 = NULL,
+    lambda_0,
+    beta_0,
+    alpha_0){
+  
+  db = simu_data(
+    nb_peptide = nb_peptide,
+    nb_sample = nb_sample,
+    list_mean_diff = list_mean_diff,
+    list_var = list_var,
+    multivariate = multivariate) 
+  
+    if(imputation){
+      db = db %>% 
+        group_by(Peptide, Group) %>% 
+        mutate(Average = mean(Output)) %>% 
+        mutate(Missing = rbinom(nb_sample, 1, missing_ratio)) %>% 
+        mutate(Output = if_else(Missing == 1, Average, Output)) %>% 
+        dplyr::select(- c(Missing, Average)) %>% 
+        ungroup()
+    } else
+    {
+      db = db %>% 
+        group_by(Peptide, Sample) %>% 
+        mutate(Missing = rbinom(1, 1, missing_ratio)) %>% 
+        dplyr::filter(Missing == 0) %>% 
+        dplyr::select(- c(Missing)) %>% 
+        ungroup()
+    }
+  
+  res = db %>%
+    posterior_mean(mu_0 = mu_0, lambda_0 = lambda_0,
+                   alpha_0 = alpha_0, beta_0 = beta_0) %>%
+    identify_diff() %>%
+    dplyr::filter(Group == 1) %>%
+    left_join(db %>% select(c('Peptide', 'Group', 'Mean')) %>%
+                              distinct() %>%
+                              rename('Group2' = Group),
+                            by = c('Peptide', 'Group2')) %>%
+    mutate('MSE' = (Mean - mu2)^2,
+           'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
+           'CI_width' = CI_sup2 - CI_inf2,
+           'Diff_mean' = mu2 - mu) %>% 
+    mutate(across(c(Group, Group2), .fns = as.character)) %>% 
+    mutate('Multivariate' = FALSE)
+  
+  if(multivariate){
+    res = res %>%
+      bind_rows(
+        db %>% multi_posterior_mean(mu_0 = mu_0, lambda_0 = lambda_0,
+                                    nu_0 = alpha_0, Sigma_0 = beta_0) %>% 
+          identify_diff() %>%
+          dplyr::filter(Group == 1) %>%
+          left_join(db %>% select(c('Peptide', 'Group', 'Mean')) %>%
+                      distinct() %>%
+                      rename('Group2' = Group),
+                    by = c('Peptide', 'Group2')) %>%
+          mutate('MSE' = (Mean - mu2)^2,
+                 'CIC' = ((Mean > CI_inf2) & (Mean < CI_sup2)) * 100,
+                 'CI_width' = CI_sup2 - CI_inf2,
+                 'Diff_mean' = mu2 - mu,
+                 'Multivariate' = TRUE, 
+                 'Group' = as.character(Group),
+                 'Group2' = as.character(Group2)) 
+      )
+  }
+    
+  if(t_test){
+    res <- res %>% 
+      left_join(multi_t_test(db),
+                by = c('Peptide', 'Group', 'Group2'))
+  }
+  
+  if(limma){
+    res <- res %>% 
+      left_join(multi_limma(db),
+                by = c('Peptide', 'Group', 'Group2'))
+  }
+
+  return(res)
+}
+
+eval_multi <- function(
+    mean_ref, 
+    cov_ref,
+    mean_compare,
+    cov_compare,
+    lambda_0,
+    nu_0,
+    sigma_0 = NULL,
+    nb_rep = 100,
+    nb_sample = 5){
+  
+  res = tibble(mean_diff = c(), 
+             MSE = c(), 
+             CI_coverage = c()
+            )
+  for(i in 1:nb_rep)
+  {
+  ## Generate reference dataset
+  db_ref = mvtnorm::rmvnorm(nb_sample, mean = mean_ref, sigma = cov_ref) %>% 
+    as_tibble() %>%
+    rename('Peptide_1' = V1,
+           'Peptide_2' = V2,
+           'Peptide_3' = V3) %>%
+    mutate(Sample = row_number()) %>% 
+    pivot_longer(-Sample, names_to = 'Peptide', values_to = 'Output') %>%
+    mutate('Group' = 0)
+
+  db_compare = mvtnorm::rmvnorm(
+      nb_sample,
+      mean = mean_compare,
+      sigma = cov_compare) %>% 
+    as_tibble() %>%
+    rename('Peptide_1' = V1,
+           'Peptide_2' = V2,
+           'Peptide_3' = V3) %>%
+    mutate(Sample = row_number()) %>% 
+    pivot_longer(-Sample, names_to = 'Peptide', values_to = 'Output')  %>%
+    mutate('Group' = 1) %>%
+    bind_rows(db_ref)
+
+  # post = multi_posterior_mean(db_compare, lambda_0 = lambda_0, nu_0 = nu_0, Sigma_0 = sigma_0) 
+    post = posterior_mean(db_compare, lambda_0 = 1e-10, alpha_0 = 0.01, beta_0 = 0.3) 
+
+  # mean_diff = post %>%
+  #   multi_identify_diff(plot = FALSE) %>% 
+  #   pluck('Diff_mean') %>%
+  #   dplyr::filter(Group == 0, Group2 != 0) %>%
+  #   pull(Diff_mean) %>%
+  #   mean()
+
+  mean_diff = post %>% 
+    identify_diff() %>% 
+    filter(Group == 0) %>%
+    pull(Diff_mean) %>%
+    mean()
+
+  # mse = post %>%
+  #   multi_identify_diff(plot = FALSE) %>% 
+  #   pluck('Diff_mean') %>%
+  #   dplyr::filter(Group == 0, Group2 != 0) %>%
+  #   pull(Mean) %>%
+  #   `^`(2) %>%
+  #   mean() 
+
+  mse = post %>% 
+    identify_diff() %>% 
+    dplyr::filter(Group == 0) %>% 
+    mutate('Squared_error' = (mean(mean_compare) + Diff_mean)^2) %>%
+    pull(Squared_error) %>%
+    mean()
+
+  ## Compute the posterior covariance matrix for the reference group
+  dim = n_distinct(post$Peptide)   
+    
+  post_mean_ref = post %>%
+    filter(Group == 0) %>% 
+    pull(mu) %>%
+    unique()
+    
+  is_in_CI = post %>%
+      identify_diff() %>%
+      filter(Group == 0) %>%
+      mutate(
+        'CI_inf' = mean + sqrt(var) * qt(0.025, df),
+        'CI_sup' = mean + sqrt(var) * qt(0.975, df)
+      ) %>% 
+      mutate(
+        'is_in_CI' = (mean(mean_ref) >= CI_inf) & (mean(mean_ref) <= CI_sup)
+      ) %>%
+    pull(is_in_CI) %>%
+    min()
+
+  # post_cov_ref = post %>%
+  #   filter(Group == 0) %>% 
+  #   mutate(Cov = Sigma / (lambda * (nu - dim + 1 ) ) ) %>%
+  #   pull(Cov) %>%
+  #   matrix(nrow = dim, ncol = dim)
+   
+  # ## Compute the 95% credible interval coverage for the reference group
+  # is_in_CI = multi_CI(
+  #   data = mean_ref,
+  #   mean = post_mean_ref,
+  #   cov = post_cov_ref,
+  #   df = (unique(post$nu) - dim + 1) ) %>%  
+  #   as.vector()
+
+  res = res %>%
+    bind_rows(
+      tibble('mean_diff' = mean_diff,
+             'MSE' = mse,
+             'CI_coverage' = is_in_CI * 100)
+    )
+  }
+
+  return(res)
+} 
+
+summarise_eval <- function(eval){
+  eval %>%
+    group_by(Group, Group2, Multivariate) %>%
+    summarise(across(where(is.double),
+                     .fns = list('Mean' = mean, 'Sd' = sd)),
+                     .groups = 'drop') %>%
+    mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd)) %>%
+    mutate(across(where(is.double), ~ round(.x, 2))) %>%
+    return()
+}
+
+multi_t_test <- function(data){
+  
+  data %>%
+    tidyr::expand_grid('Group2' = unique(Group)) %>%
+    dplyr::left_join(
+      data %>%
+        dplyr::select(- Mean) %>%
+        dplyr::rename('Group2' = Group,
+                      'Output2' = Output),
+      by = c("Peptide", 'Group2', 'Sample')) %>%
+    dplyr::filter(Group == 1, Group2 != 1) %>%
+    dplyr::group_by(Peptide, Group, Group2) %>%
+    dplyr::reframe('p_value' = tryCatch(t.test(Output,Output2)$p.value,
+                                      error = function(e){return(NA)}),
+                   'Signif' = (p_value < 0.05))  %>% 
+    mutate(across(c(Group, Group2), .fns = as.character)) %>% 
+    return()
+}
+
+multi_limma <- function(data){
+  # Note, limma and DAPAR use data in wide format.
+  db_limma <- data %>% 
+    dplyr::select(-Mean) %>% 
+    # Merge Group and Sample columns to denote biological samples analysed
+    unite(col = "Cond_Rep", c(Group,Sample), sep = "_") %>% 
+    # Reshape data in wide format
+    spread(key = "Cond_Rep", value = "Output")
+  
+  ## Create quantitative data matrix to match DAPAR requirements
+  qdata <- db_limma %>%  
+    column_to_rownames(var = "Peptide") 
+  
+  ## Create design dataframe to match DAPAR requirements
+  metadata <- data.frame(Sample.name = colnames(qdata)) %>% 
+    separate(Sample.name, sep = "_", into = c("Condition",NA), remove = F) %>% 
+    mutate(Bio.Rep = 1:ncol(qdata))
+  
+  qdata <- qdata %>% 
+    select(metadata$Sample.name)
+  
+  ## Moderated t-test - OnevsOne setting
+  res_limma <- DAPAR::limmaCompleteTest(qData = as.matrix(qdata),
+                                        sTab = metadata,
+                                        comp.type = "OnevsOne")
+  
+  P_Value <- res_limma$P_Value %>%
+    rownames_to_column(var = "Peptide") %>%
+    pivot_longer(-Peptide,
+                 names_to = "Comparison",
+                 values_to = "LM_p_value") %>%
+    separate(col = Comparison,
+             into = c("Group", NA, "Group2", NA),
+             sep = "_")
+  
+  return(P_Value)
+}
+
+
+ci_coverage <- function(
+    posterior,
+    CI_level_seq = seq(0.05, 1, 0.05)
+    ){
+  
+    posterior %>%
+      dplyr::mutate('sigma' = sqrt(.data$beta / (.data$lambda * .data$alpha)),
+                    'df' =  2 * .data$alpha) %>%
+      uncount(length(CI_level_seq)) %>% 
+      mutate(CI_level = rep(CI_level_seq, nrow(posterior))) %>% 
+      dplyr::reframe(
+        .data$Peptide, .data$Group, .data$mu, .data$CI_level,
+        'CI_inf' = extraDistr::qlst(
+          p = CI_level/2,
+          df =.data$df,
+          mu = .data$mu,
+          sigma = .data$sigma,
+          lower.tail = T),
+        'CI_sup' =  extraDistr::qlst(
+          p = CI_level/2,
+          df =.data$df,
+          mu = .data$mu,
+          sigma = .data$sigma,
+          lower.tail = F)
+      ) %>% 
+    return()
+}
 
 data_preprocessing <- function(data, output_str_id, prop_NA, nb_group, nb_rep,
                                maxquant, normalize){
