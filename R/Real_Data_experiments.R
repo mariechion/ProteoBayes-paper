@@ -1,18 +1,18 @@
-# -- LIBRAIRIES -- # 
+  # -- LIBRAIRIES -- # 
 library(tidyverse)
 library(ProteoBayes)
 library(cp4p)
 library(DAPAR)
 
 # -- FUNCTIONS -- # 
-source("Experiments/Real_data/utils.R")
+source("R/utils.R")
 
 # -- REAL DATASETS -- #
-db_ARATH <- read.delim("REAL_DATA_XP/Arabido_UPS/peptides.txt")
-db_YST <- read.delim("REAL_DATA_XP/Yeast_UPS/peptides.txt")
-db_MOUSE <- read_delim("REAL_DATA_XP/Mouse_UPS/Spike-in-biol-var-OT-SN-Report.txt", 
+db_ARATH <- read.delim("Data/Arabido_UPS/peptides.txt")
+db_YST <- read.delim("Data/Yeast_UPS/peptides.txt")
+db_MOUSE <- read_delim("Data/Mouse_UPS/Spike-in-biol-var-OT-SN-Report.txt", 
                        delim = "\t", escape_double = FALSE, trim_ws = TRUE)
-db_YST_B <- read.delim("REAL_DATA_XP/Yeast_UPS_B/peptides.txt")
+db_YST_B <- read.delim("Data/Yeast_UPS/peptides.txt")
 
 # -- EXPERIMENTS -- #
 normalize = T
@@ -81,10 +81,10 @@ res_YST_B <- real_data_eval(data = db_YST_B, type = "YST_B",
                             FDR = FDR,
                             summary = F)
 
-write_csv(x = res_ARATH$results, file = "REAL_DATA_XP/Exp1_res_ARATH.csv")
-write_csv(x = res_YST$results, file = "REAL_DATA_XP/Exp1_res_YST.csv")
-write_csv(x = res_MOUSE$results, file = "REAL_DATA_XP/Exp1_res_MOUSE.csv")
-write_csv(x = res_YST_B$results, file = "REAL_DATA_XP/Exp1_res_YST_B.csv")
+write_csv(x = res_ARATH$results, file = "Data/Exp1_res_ARATH.csv")
+write_csv(x = res_YST$results, file = "Data/Exp1_res_YST.csv")
+write_csv(x = res_MOUSE$results, file = "Data/Exp1_res_MOUSE.csv")
+write_csv(x = res_YST_B$results, file = "Data/Exp1_res_YST_B.csv")
 
 ## Output mean difference comparison table
 
@@ -133,7 +133,7 @@ bind_rows(
            LM_Diff_Mean = paste0(LM_log2FC_mean," ", "(", LM_log2FC_sd, ")"),
            .keep = "unused") %>% 
     mutate(Experiment = "Chion2022", .before = True_diff_mean)
-) %>% write_csv(file = "REAL_DATA_XP/Exp1_summary.csv")
+) %>% write_csv(file = "Data/Exp1_summary.csv")
 
 
 
@@ -196,10 +196,10 @@ res_PB_YST_B <- real_data_eval(data = db_YST_B, type = "YST_B",
                                FDR = FDR, 
                                summary = T)
 
-write_csv(x = res_PB_ARATH$results, file = "REAL_DATA_XP/Exp2_res_ARATH.csv")
-write_csv(x = res_PB_YST$results, file = "REAL_DATA_XP/Exp2_res_YST.csv")
-write_csv(x = res_PB_MOUSE$results, file = "REAL_DATA_XP/Exp2_res_MOUSE.csv")
-write_csv(x = res_PB_YST_B$results, file = "REAL_DATA_XP/Exp2_res_YST_B.csv")
+write_csv(x = res_PB_ARATH$results, file = "Data/Exp2_res_ARATH.csv")
+write_csv(x = res_PB_YST$results, file = "Data/Exp2_res_YST.csv")
+write_csv(x = res_PB_MOUSE$results, file = "Data/Exp2_res_MOUSE.csv")
+write_csv(x = res_PB_YST_B$results, file = "Data/Exp2_res_YST_B.csv")
 
 ## Output ProteoBayes Evaluation table
 
@@ -253,7 +253,7 @@ res_Mean1 <- bind_rows(
            .keep = "unused") %>% 
     mutate(Experiment = "Chion2022", .before = True_diff_mean)
 ) %>% filter(!is.na(True_diff_mean)) %>% 
-  rename("True" = "True_diff_mean") %>%  write_csv(file = "REAL_DATA_XP/Exp2_summary.csv")
+  rename("True" = "True_diff_mean") %>%  write_csv(file = "Data/Exp2_summary.csv")
 
 
 

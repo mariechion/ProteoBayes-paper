@@ -1,7 +1,13 @@
 library(tidyverse)
 library(ProteoBayes)
 library(mvtnorm)
+# library(proDA)
+# library(msqrob2)
+# library(SummarizedExperiment)
 # library(DAPAR)
+
+source("R/utils.R")
+
 
 #### Simulation study  ####
 
@@ -9,16 +15,20 @@ library(mvtnorm)
 set.seed(42)
 
 res1 = eval(
-  nb_peptide = 1000,
-  nb_sample = 5,
-  list_mean_diff = c(0, 0, 1, 5, 10),
-  list_var = c(1, 1, 1, 1, 1),
+  nb_peptide = 200,
+  nb_sample = 1000,
+  list_mean_diff = c(0, 1, 5, 10, 1, 1, 1),
+  list_var = c(1, 1, 1, 1, 5, 10, 20),
   lambda_0 = 1e-10,
+  t_test = FALSE,
+  limma = FALSE,
+  msqrob = TRUE,
+  proDA = FALSE,
   alpha_0 = 0.01, 
   beta_0 = 0.3
-  )
+)
 
-summarise_eval(res1)
+sum_res1 = summarise_eval(res1)
 
 #### Experiment 2: Evaluation of posteriors for different variances ####
 set.seed(1)
@@ -90,22 +100,30 @@ floop = function(n){
     
     t1 = Sys.time()
     dummy = posterior_mean(data)
+    dummy2 = identify_diff(dummy)
     t2 = Sys.time()
-    dummy = multi_t_test(data) 
+    dummy = multi_t_test(data)
     t3 = Sys.time()
     dummy = multi_posterior_mean(data)
+    dummy2 = multi_identify_diff(dummy)
     t4 = Sys.time()
-    dummy = multi_limma(data) 
+    dummy = multi_limma(data)
     t5 = Sys.time()
+    dummy = multi_proDA(data)
+    t6 = Sys.time()
+    dummy = multi_msqrob(data)
+    t7 = Sys.time()
     
     tib = bind_rows(
       tib, 
       tibble('Nb_peptide' = i, 
              'Time' = (t2 - t1),
              'Time_t_test' = (t3 - t2),
-             'Time_multi' = (t4 - t3), 
-             'Time_lima' = (t5 - t4))
-    ) 
+             'Time_multi' = (t4 - t3),
+             'Time_lima' = (t5 - t4),
+             'Time_proDA' = (t6 - t5),
+             'Time_msqrob' = (t7 - t6))
+    )
   }
   return(tib)
 }
@@ -121,15 +139,16 @@ res4 = lapply(1:10, floop) %>%
 floop2 = function(i)
 {
   no_imput = eval(
-    nb_peptide = 10000,
+    nb_peptide = 100,
     nb_sample = 10,
     list_mean_diff = c(0, 1),
     list_var = c(1, 1),
     multivariate = FALSE,
     imputation = F,
     missing_ratio = i, 
-    t_test = T,
+    t_test = F,
     limma = T,
+    proDA = T,
     lambda_0 = 1e-10,
     alpha_0 = 0.01, 
     beta_0 = 0.3
@@ -138,15 +157,16 @@ floop2 = function(i)
     mutate(Imputation = F)
   
   imput = eval(
-    nb_peptide = 10000,
+    nb_peptide = 100,
     nb_sample = 10,
     list_mean_diff = c(0, 1),
     list_var = c(1, 1),
     multivariate = FALSE,
     imputation = T,
     missing_ratio = i, 
-    t_test = T,
+    t_test = F,
     limma = T,
+    proDA = T,
     lambda_0 = 1e-10,
     alpha_0 = 0.01, 
     beta_0 = 0.3
@@ -163,14 +183,18 @@ res5 = c(0, 0.2, 0.5, 0.8) %>%
   bind_rows()
 
 sum_res5 = res5 %>%
-  drop_na() %>% 
-  dplyr::select(MSE:Imputation) %>% 
+  drop_na() %>%  
+  mutate(Proba_differential = 1- Proba_differential) %>% 
   group_by(Missing_ratio, Imputation) %>%
   summarise(across(where(is.double), 
                    .fns = list('Mean' = mean, 'Sd' = sd)),
             .groups = 'drop') %>%
   mutate('MSE_Mean' = sqrt(MSE_Mean), 'MSE_Sd' = sqrt(MSE_Sd)) %>%
-  mutate(across(where(is.double), ~ round(.x, 2)))
+  mutate(across(where(is.double), ~ round(.x, 2))) %>% 
+  mutate(across(ends_with("_Mean"), 
+                ~ sprintf("%.2f (%.2f)", ., get(sub("_Mean$", "_Sd", cur_column()))),
+                .names = "{sub('_Mean$', '', .col)}")) %>%
+  select(-ends_with("_Mean"), -ends_with("_Sd"))
 
 #### Experiment 6: Evaluation of the effect size and uncertainty quantification in the multivariate case ####
 
@@ -220,4 +244,156 @@ sum_res = res %>% group_by(Distrib_compare) %>%
 
 ####
 
+#### Experiment 7: Sensitivity analysis HPs univariate ####
+
+lambda = sensitivity_uni(
+    nb_peptide = 1000, 
+    nb_sample = 5, 
+    param = "lambda", 
+    grid_param = c(1e-3, 1e-2, 1e-1, 1, 10, 100, 1000),
+    alpha_0 = 0.01, 
+    beta_0 = 0.3,
+    lambda_0 = 1e-10, 
+    list_mean_diff = c(0, 1, 10, 10),
+    list_var = c(1, 10, 1, 100),
+    CI_level = 0.05)
+
+sum_lambda = lambda %>% 
+  dplyr::select(NLL, CIC, Param) %>% 
+  group_by(Param) %>% 
+  summarise(across(where(is.double), 
+                   .fns = list('Mean' = mean, 'Sd' = sd)),
+            .groups = 'drop') %>%
+  mutate(across(where(is.double), ~ round(.x, 2)))
+
+#write_csv(sum_lambda, 'Results/Simulations/sensitivity_lambda.csv')
+
+alpha = sensitivity_uni(
+  nb_peptide = 1000, 
+  nb_sample = 5, 
+  param = "alpha", 
+  grid_param = c(1e-3, 1e-2, 1e-1, 1, 10, 100, 1000),
+  alpha_0 = 0.01, 
+  beta_0 = 0.3,
+  lambda_0 = 1e-10, 
+  list_mean_diff = c(0, 1, 10, 10),
+  list_var = c(1, 10, 1, 100),
+  CI_level = 0.05)
+
+sum_alpha = alpha %>% 
+  dplyr::select(NLL, CIC, Param) %>% 
+  group_by(Param) %>% 
+  summarise(across(where(is.double), 
+                   .fns = list('Mean' = mean, 'Sd' = sd)),
+            .groups = 'drop') %>%
+  mutate(across(where(is.double), ~ round(.x, 2)))
+
+#write_csv(sum_alpha, 'Results/Simulations/sensitivity_alpha.csv')
+
+beta = sensitivity_uni(
+  nb_peptide = 1000, 
+  nb_sample = 5, 
+  param = "beta", 
+  grid_param = c(1e-3, 1e-2, 1e-1, 1, 10, 100, 1000),
+  alpha_0 = 0.01, 
+  beta_0 = 0.3,
+  lambda_0 = 1e-10, 
+  list_mean_diff = c(0, 1, 10, 10),
+  list_var = c(1, 10, 1, 100),
+  CI_level = 0.05)
+
+sum_beta = beta %>% 
+  dplyr::select(NLL, CIC, Param) %>% 
+  group_by(Param) %>% 
+  summarise(across(where(is.double),  
+                   .fns = list('Mean' = mean, 'Sd' = sd)),
+            .groups = 'drop') %>%
+  mutate(across(where(is.double), ~ round(.x, 2)))
+
+#write_csv(sum_beta, 'Results/Simulations/sensitivity_beta.csv')
+
   
+
+#### Experiment 7: Sensitivity analysis HPs multivariate ####
+
+Sigma_5 = sensitivity_multi(
+    nb_rep = 300, 
+    nb_sample = 5, 
+    param = "Sigma", 
+    grid_param = c(1e-3, 5e-2, 1e-2, 5e-1, 1e-1, 0.5, 1),
+    lambda_0 = 1e-10) %>% 
+  mutate(Nb_sample = 5)
+
+Sigma_10 = sensitivity_multi(
+  nb_rep = 300, 
+  nb_sample = 10, 
+  param = "Sigma", 
+  grid_param = c(1e-3, 5e-2, 1e-2, 5e-1, 1e-1, 0.5, 1),
+  lambda_0 = 1e-10) %>% 
+  mutate(Nb_sample = 10)
+
+Sigma_50 = sensitivity_multi(
+  nb_rep = 300, 
+  nb_sample = 50, 
+  param = "Sigma", 
+  grid_param = c(1e-3, 5e-2, 1e-2, 5e-1, 1e-1, 0.5, 1),
+  lambda_0 = 1e-10) %>% 
+  mutate(Nb_sample = 50)
+
+Sigma_100 = sensitivity_multi(
+  nb_rep = 300, 
+  nb_sample = 100, 
+  param = "Sigma", 
+  grid_param = c(1e-3, 5e-2, 1e-2, 5e-1, 1e-1, 0.5, 1),
+  lambda_0 = 1e-10) %>% 
+  mutate(Nb_sample = 100)
+
+Sigma = Sigma_5 %>% 
+  bind_rows(Sigma_10) %>% 
+  bind_rows(Sigma_50) %>% 
+  bind_rows(Sigma_100)
+
+sum_Sigma = Sigma %>% 
+  mutate(NLL = NLL / Nb_sample) %>%
+  dplyr::select(NLL, CIC, Param, Nb_sample) %>% 
+  group_by(Param, Nb_sample) %>% 
+  summarise(across(where(is.numeric), 
+                   .fns = list('Mean' = mean, 'Sd' = sd)),
+            .groups = 'drop') %>%
+  mutate(across(where(is.double), ~ round(.x, 2)))
+
+#write_csv(sum_Sigma, 'Results/Simulations/sensitivity_Sigma.csv')
+
+nu_diag = sensitivity_multi(
+  nb_rep = 500, 
+  nb_sample = 5, 
+  param = "nu", 
+  grid_param = c(5, 10, 20, 50, 100),
+  lambda_0 = 1e-10, 
+  cov_diag = TRUE) %>% 
+  mutate(Cov_diag = TRUE)
+
+nu_cov = sensitivity_multi(
+  nb_rep = 500, 
+  nb_sample = 5, 
+  param = "nu", 
+  grid_param = c(5, 10, 20, 50, 100),
+  lambda_0 = 1e-10, 
+  cov_diag = FALSE) %>% 
+  mutate(Cov_diag = FALSE)
+
+
+nu = nu_diag %>% 
+  bind_rows(nu_cov)
+
+sum_nu = nu %>% 
+  mutate(NLL = NLL) %>%
+  dplyr::select(NLL, CIC, Param, Cov_diag) %>% 
+  group_by(Param, Cov_diag) %>% 
+  summarise(across(where(is.numeric), 
+                   .fns = list('Mean' = mean, 'Sd' = sd)),
+            .groups = 'drop') %>%
+  mutate(across(where(is.double), ~ round(.x, 2)))
+
+#write_csv(sum_nu, 'Results/Simulations/sensitivity_nu.csv')
+

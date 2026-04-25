@@ -300,6 +300,91 @@ ggplot(ci_valid) +
   geom_line(aes(x = CI_level, y = Coverage), col = "red") +
   geom_abline(intercept = 0, slope = 1, linetype = 'dashed') +
   theme_classic()
+#########################################################################
+
+
+#### Univariate sensitivity analysis ####
+
+lambda = read_csv("Results/Simulations/sensitivity_lambda.csv")
+alpha = read_csv("Results/Simulations/sensitivity_alpha.csv")
+beta = read_csv("Results/Simulations/sensitivity_beta.csv")
+
+overall = lambda %>% mutate(HP = "lambda") %>% 
+  bind_rows(alpha %>% mutate(HP = "alpha")) %>% 
+  bind_rows(beta %>% mutate(HP = "beta")) 
+
+gg_NLL = ggplot(overall) +
+  geom_line(aes(x = Param, y = NLL_Mean,
+                col = HP, linetype = HP)) +
+  # geom_ribbon(aes(x = Param,
+  #                 ymin = NLL_Mean - NLL_Sd,
+  #                 ymax = NLL_Mean + NLL_Sd,
+  #                 fill = Hyperparameter), alpha = 0.2) +
+  scale_x_continuous(trans = "log10", limits = c(1e-3, 10^3), 
+                     breaks = c( 1e-3, 1e-2, 1e-1, 1, 10, 10^2, 10^3)) +
+  ylim(c(0, 25)) +
+  labs(x = "Hyperparameter value", y = "Negative Log-Likelihood") +
+  theme_classic()
+
+gg_CIC = ggplot(overall) +
+  geom_line(aes(x = Param, y = CIC_Mean,
+                col = HP, linetype = HP)) +
+  # geom_ribbon(aes(x = Param, 
+  #                 ymin = CIC_Mean - CIC_Sd, 
+  #                 ymax = CIC_Mean + CIC_Sd,
+  #                 fill = Hyperparameter), alpha = 0.2) +
+  scale_x_continuous(trans = "log10", limits = c(1e-3, 10^3), 
+                     breaks = c( 1e-3, 1e-2, 1e-1, 1, 10, 10^2, 10^3)) +
+  scale_y_continuous(limits = c(0, 100), 
+                     breaks = c(0, 25, 50, 75, 95, 100)) +
+  geom_hline(yintercept = 95, linetype = 'dashed', linewidth = 0.8) +
+  labs(x = "Hyperparameter value", y = "95% Credible Interval Coverage") +
+  theme_classic() 
+
+
+# ggsave('Figures/NLL_uni.png', gg_NLL, dpi = 600, width = 2400, height = 2400, units = "px")
+
+#### Multivariate sensitivity analysis ####
+
+Sigma = read_csv("Results/Simulations/sensitivity_Sigma.csv") %>% 
+  mutate(Nb_sample = as.factor(Nb_sample))
+
+gg_multi_NLL = ggplot(Sigma) +
+  geom_line(aes(x = Param, y = NLL_Mean, col = Nb_sample, linetype = Nb_sample)) +
+  theme_classic() + 
+  ylab("Negative Log-Likelihood / sample") + xlab("Covariance strength")
+
+
+gg_multi_CIC = ggplot(Sigma) +
+  geom_line(aes(x = Param, y = CIC_Mean, col = Nb_sample, linetype = Nb_sample)) +
+  theme_classic() + 
+  scale_y_continuous(limits = c(0, 100), 
+                     breaks = c(0, 25, 50, 75, 95, 100)) +
+  geom_hline(yintercept = 95, linetype = 'dashed', linewidth = 0.8) +
+  ylab("95% Credible Interval Coverage") + xlab("Covariance strength")
+
+# ggsave('Figures/NLL_multi_cov.tiff', gg_multi_NLL, dpi = 600, width = 2400, height = 2400, units = "px")
+
+nu = read_csv("Results/Simulations/sensitivity_nu.csv") %>% 
+  mutate(Correct_matrix = Cov_diag)
+
+gg_multi_NLL = ggplot(nu) +
+  geom_line(aes(x = Param, y = NLL_Mean, col = Correct_matrix, linetype = Correct_matrix)) +
+  theme_classic() + 
+  ylab("Negative Log-Likelihood") + xlab("Prior degrees of freedom")
+
+
+gg_multi_CIC = ggplot(nu) +
+  geom_line(aes(x = Param, y = CIC_Mean, col = Correct_matrix, linetype = Correct_matrix)) +
+  theme_classic() + 
+  xlim(c(0, 100)) +
+  scale_y_continuous(limits = c(0, 100), 
+                     breaks = c(0, 25, 50, 75, 95, 100)) +
+  geom_hline(yintercept = 95, linetype = 'dashed', linewidth = 0.8) +
+  ylab("95% Credible Interval Coverage") + xlab("Prior degrees of freedom")
+
+# ggsave('Figures/NLL_multi_nu.png', gg_multi_NLL, dpi = 600, width = 2400, height = 2400, units = "px")
+
 
 #########################################################################
 
@@ -368,6 +453,104 @@ gg_2D_gaussians = ggdraw() +
   draw_plot(p_left, 0.00, 0.10, 0.28, 0.75) +   # left
   draw_plot(p_main, 0.15, 0.00, 0.85, 0.85) +   # center
   draw_plot(p_top,  0.35, 0.85, 0.50, 0.15)     # top
+
+#################################################################################
+
+#### Overlap and Total Variation Distance ####
+
+# parameters
+mu1 <- 0
+mu2 <- 2
+sigma1 <- 1.3
+sigma2 <- 2
+df1 <- 5
+df2 <- 7
+
+x <- seq(-5, 7, length.out = 2000)
+
+p1 <- dt((x - mu1)/sigma1, df1) / sigma1
+p2 <- dt((x - mu2)/sigma2, df2) / sigma2
+
+overlap <- pmin(p1, p2)
+
+df <- data.frame(
+  x = x,
+  p1 = p1,
+  p2 = p2,
+  overlap = overlap
+)
+
+dx <- x[2] - x[1]
+ovl <- sum(overlap) * dx
+tvd <- 1 - ovl
+
+col1 <- "black"
+col2 <- "black"
+col_overlap <- "#F8B9C5"
+col_tvd <- "#A8CBB7"
+col_tvd2 <- "#C7B8EA"
+
+gg_ovl = ggplot(df, aes(x = x)) +
+  
+  # overlap (base)
+  geom_area(aes(y = overlap),
+            fill = col_overlap,
+            alpha = 0.7) +
+  
+  # TVD 1
+  geom_ribbon(
+    data = subset(df, p1 > p2),
+    aes(ymin = overlap, ymax = p1),
+    fill = col_tvd,
+    alpha = 0.8
+  ) +
+  # TVD 2
+  geom_ribbon(
+    data = subset(df, p1 < p2),
+    aes(ymin = overlap, ymax = p2),
+    fill = col_tvd2,
+    alpha = 0.8
+  ) +
+  
+  # densities
+  geom_line(aes(y = p1), color = col1, size = 0.4) +
+  geom_line(aes(y = p2), color = col2, size = 0.4) +
+  
+  # annotations
+  annotate("text",
+           x = mu1 + 0.5,
+           y = max(overlap) * 0.3,
+           label = paste0("OVL = ", round(ovl, 2)),
+           size = 5,
+           fontface = "bold") +
+  
+  annotate("text",
+           x = mu1 - 0.1,
+           y = max(p1) * 0.6,
+           label = paste0("TVD = ", round(tvd, 2)),
+           size = 5,
+           fontface = "bold") +
+  annotate("text",
+           x = mu2 + 1.2,
+           y = max(p1) * 0.3,
+           label = paste0("TVD = ", round(tvd, 2)),
+           size = 5,
+           fontface = "bold") +
+  
+  labs(
+    title = "Overlap and Total Variation Distance",
+    subtitle = "Shared mass (OVL) and non-overlapping mass (TVD)",
+    x = "Measurement",
+    y = "Density"
+  ) +
+  
+  theme_classic(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12, color = "grey40")
+  )
+
+# ggsave('Figures/ovl_tvd.png', gg_ovl, dpi = 600, width = 4800, height = 2400, units = "px")
 
 #################################################################################
 
