@@ -4,6 +4,8 @@ library(gganimate)
 library(mvtnorm)
 library(patchwork)
 library(cowplot)
+library(gridExtra)
+
 
 source("R/utils.R")
  
@@ -341,8 +343,9 @@ gg_CIC = ggplot(overall) +
   labs(x = "Hyperparameter value", y = "95% Credible Interval Coverage") +
   theme_classic() 
 
+gg = grid.arrange(ncol = 2, gg_NLL, gg_CIC)
 
-# ggsave('Figures/NLL_uni.png', gg_NLL, dpi = 600, width = 2400, height = 2400, units = "px")
+# ggsave('Figures/NLL_CIC_uni.png', gg, dpi = 600, width = 5600, height = 2400, units = "px")
 
 #### Multivariate sensitivity analysis ####
 
@@ -363,7 +366,9 @@ gg_multi_CIC = ggplot(Sigma) +
   geom_hline(yintercept = 95, linetype = 'dashed', linewidth = 0.8) +
   ylab("95% Credible Interval Coverage") + xlab("Covariance strength")
 
-# ggsave('Figures/NLL_multi_cov.tiff', gg_multi_NLL, dpi = 600, width = 2400, height = 2400, units = "px")
+gg = grid.arrange(ncol = 2, gg_multi_NLL, gg_multi_CIC)
+
+# ggsave('Figures/NLL_multi_cov.png', gg, dpi = 600, width = 5600, height = 2400, units = "px")
 
 nu = read_csv("Results/Simulations/sensitivity_nu.csv") %>% 
   mutate(Correct_matrix = Cov_diag)
@@ -383,7 +388,8 @@ gg_multi_CIC = ggplot(nu) +
   geom_hline(yintercept = 95, linetype = 'dashed', linewidth = 0.8) +
   ylab("95% Credible Interval Coverage") + xlab("Prior degrees of freedom")
 
-# ggsave('Figures/NLL_multi_nu.png', gg_multi_NLL, dpi = 600, width = 2400, height = 2400, units = "px")
+gg = grid.arrange(ncol = 2, gg_multi_NLL, gg_multi_CIC)
+# ggsave('Figures/NLL_multi_nu.png', gg, dpi = 600, width = 5600, height = 2400, units = "px")
 
 
 #########################################################################
